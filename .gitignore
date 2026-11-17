@@ -9,3 +9,6 @@ coverage/
 # Compiled declarations beside sources are build output, never source.
 libs/**/src/**/*.d.ts
 apps/**/src/**/*.d.ts
+
+.claude/worktrees
+.claude/settings.local.json
