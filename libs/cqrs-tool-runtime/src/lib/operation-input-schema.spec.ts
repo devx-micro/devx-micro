@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { CqrsToolRuntime } from './cqrs-tool-runtime';
-import type { OperationInputSchema, ToolOperationDescriptor } from './contracts';
+import type {
+  OperationInputSchema,
+  ToolOperationDescriptor,
+} from './contracts';
 
 /**
  * ADR-064 D7: `ToolOperationDescriptor` gains an OPTIONAL `inputSchema` — a plain structural type, so
@@ -21,7 +24,12 @@ describe('ToolOperationDescriptor.inputSchema', () => {
   };
 
   it('is optional: a descriptor with none still type-checks, so no existing operation changes', () => {
-    const plain: ToolOperationDescriptor = { name: 'x.y', summary: 's', kind: 'query', createRequest: () => ({}) };
+    const plain: ToolOperationDescriptor = {
+      name: 'x.y',
+      summary: 's',
+      kind: 'query',
+      createRequest: () => ({}),
+    };
     expect(plain.inputSchema).toBeUndefined();
   });
 
@@ -31,7 +39,13 @@ describe('ToolOperationDescriptor.inputSchema', () => {
   });
 
   it('is carried untouched by the descriptor', () => {
-    const d: ToolOperationDescriptor = { name: 'x.y', summary: 's', kind: 'query', createRequest: () => ({}), inputSchema: schema };
+    const d: ToolOperationDescriptor = {
+      name: 'x.y',
+      summary: 's',
+      kind: 'query',
+      createRequest: () => ({}),
+      inputSchema: schema,
+    };
     expect(d.inputSchema).toBe(schema);
   });
 
@@ -54,6 +68,8 @@ describe('ToolOperationDescriptor.inputSchema', () => {
     // the tool executor, not to the CLI/HTTP runtime, whose behaviour must stay byte-identical.
     expect(envelope.status).toBe('success');
     expect(seen).toEqual([{ id: 'a', extra: 1 }]);
-    expect(runtime.listOperations()).toEqual([{ kind: 'query', name: 'x.y', summary: 's' }]);
+    expect(runtime.listOperations()).toEqual([
+      { kind: 'query', name: 'x.y', summary: 's' },
+    ]);
   });
 });

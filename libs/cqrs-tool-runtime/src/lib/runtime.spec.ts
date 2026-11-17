@@ -97,27 +97,62 @@ describe('parseToolArguments', () => {
   it('a repeated flag records every value, in order — not the last alone', () => {
     // `defect.open --scope a.ts --scope b.ts` recorded one scope and reported success
     // (d-20260910-a-repeated-cli-flag-silently-keeps): the second assignment overwrote the first.
-    const { input } = parseToolArguments(['defect.open', '--scope', 'a.ts', '--scope', 'b.ts', '--title', 't']);
+    const { input } = parseToolArguments([
+      'defect.open',
+      '--scope',
+      'a.ts',
+      '--scope',
+      'b.ts',
+      '--title',
+      't',
+    ]);
     expect(input['scope']).toEqual(['a.ts', 'b.ts']);
     expect(input['title']).toBe('t');
   });
 
   it('a flag repeated three times is three values; a bare repeated flag is refused, not folded into the list', () => {
-    const { input } = parseToolArguments(['op', '--x', '1', '--x', '2', '--x', '3']);
+    const { input } = parseToolArguments([
+      'op',
+      '--x',
+      '1',
+      '--x',
+      '2',
+      '--x',
+      '3',
+    ]);
     expect(input['x']).toEqual(['1', '2', '3']);
-    expect(() => parseToolArguments(['op', '--x', '1', '--x'])).toThrow(/'--x' is given more than once/);
+    expect(() => parseToolArguments(['op', '--x', '1', '--x'])).toThrow(
+      /'--x' is given more than once/,
+    );
   });
 
   it('a key given by --json and by a flag accumulates in either order; two --json objects too (QA)', () => {
-    expect(parseToolArguments(['op', '--scope', 'a', '--json', '{"scope":"b"}']).input['scope']).toEqual(['a', 'b']);
-    expect(parseToolArguments(['op', '--json', '{"scope":["a"]}', '--scope', 'b']).input['scope']).toEqual(['a', 'b']);
-    expect(parseToolArguments(['op', '--json', '{"a":1}', '--json', '{"a":2}']).input['a']).toEqual([1, 2]);
-    expect(() => parseToolArguments(['op', '--json', '{"dry":true}', '--dry', 'x'])).toThrow(/given more than once/);
+    expect(
+      parseToolArguments(['op', '--scope', 'a', '--json', '{"scope":"b"}'])
+        .input['scope'],
+    ).toEqual(['a', 'b']);
+    expect(
+      parseToolArguments(['op', '--json', '{"scope":["a"]}', '--scope', 'b'])
+        .input['scope'],
+    ).toEqual(['a', 'b']);
+    expect(
+      parseToolArguments(['op', '--json', '{"a":1}', '--json', '{"a":2}'])
+        .input['a'],
+    ).toEqual([1, 2]);
+    expect(() =>
+      parseToolArguments(['op', '--json', '{"dry":true}', '--dry', 'x']),
+    ).toThrow(/given more than once/);
   });
 
   it('a key that is also an Object.prototype name is not "already present" on a fresh input (QA)', () => {
-    expect(parseToolArguments(['op', '--constructor', 'a']).input['constructor']).toBe('a');
-    expect(parseToolArguments(['op', '--toString', 'a', '--toString', 'b']).input['toString']).toEqual(['a', 'b']);
+    expect(
+      parseToolArguments(['op', '--constructor', 'a']).input['constructor'],
+    ).toBe('a');
+    expect(
+      parseToolArguments(['op', '--toString', 'a', '--toString', 'b']).input[
+        'toString'
+      ],
+    ).toEqual(['a', 'b']);
   });
 
   describe('--json-file', () => {
@@ -134,7 +169,10 @@ describe('parseToolArguments', () => {
     it('reads a JSON object from disk, same as --json but with no shell-quoting question', () => {
       // The exact case --json cannot survive: a backtick and an apostrophe in the same payload.
       const path = join(dir, 'payload.json');
-      writeFileSync(path, JSON.stringify({ title: "founder's own `AgentDispatchPort`" }));
+      writeFileSync(
+        path,
+        JSON.stringify({ title: "founder's own `AgentDispatchPort`" }),
+      );
       const { input } = parseToolArguments(['op', '--json-file', path]);
       expect(input['title']).toBe("founder's own `AgentDispatchPort`");
     });
@@ -153,7 +191,9 @@ describe('parseToolArguments', () => {
       const path = join(dir, 'payload.json');
       writeFileSync(path, JSON.stringify({ scope: 'b' }));
       expect(
-        parseToolArguments(['op', '--scope', 'a', '--json-file', path]).input['scope'],
+        parseToolArguments(['op', '--scope', 'a', '--json-file', path]).input[
+          'scope'
+        ],
       ).toEqual(['a', 'b']);
     });
 
@@ -167,22 +207,24 @@ describe('parseToolArguments', () => {
       } catch (error) {
         expect(error).toBeInstanceOf(ToolRuntimeError);
         expect((error as ToolRuntimeError).code).toBe('JSON_FILE_UNREADABLE');
-        expect((error as ToolRuntimeError).message).toMatch(/--json-file could not read/);
+        expect((error as ToolRuntimeError).message).toMatch(
+          /--json-file could not read/,
+        );
       }
     });
 
     it('refuses invalid JSON and a non-object payload, with the flag named in the message', () => {
       const invalidPath = join(dir, 'invalid.json');
       writeFileSync(invalidPath, '{not json');
-      expect(() => parseToolArguments(['op', '--json-file', invalidPath])).toThrow(
-        /--json-file must contain valid JSON/,
-      );
+      expect(() =>
+        parseToolArguments(['op', '--json-file', invalidPath]),
+      ).toThrow(/--json-file must contain valid JSON/);
 
       const arrayPath = join(dir, 'array.json');
       writeFileSync(arrayPath, '[1, 2]');
-      expect(() => parseToolArguments(['op', '--json-file', arrayPath])).toThrow(
-        /--json-file must contain a JSON object/,
-      );
+      expect(() =>
+        parseToolArguments(['op', '--json-file', arrayPath]),
+      ).toThrow(/--json-file must contain a JSON object/);
     });
 
     it('requires a path argument', () => {
@@ -348,7 +390,10 @@ describe('CQRS tool transports', () => {
   it('runs a stateless one-shot command/query round trip via runOneShot', async () => {
     const { runtime } = createRuntime();
     const stdout: string[] = [];
-    const io = { stdout: (line: string) => stdout.push(line), stderr: () => undefined };
+    const io = {
+      stdout: (line: string) => stdout.push(line),
+      stderr: () => undefined,
+    };
     await runOneShot(runtime, ['remember', '--value', 'stateless'], io);
     const exitCode = await runOneShot(runtime, ['recall'], io);
     expect(exitCode).toBe(0);
@@ -386,7 +431,11 @@ describe('CQRS tool transports', () => {
 
   it('runs a stateful interactive REPL session and honors exit', async () => {
     const { runtime } = createRuntime();
-    const input = Readable.from(['remember --value repl\n', 'recall\n', 'exit\n']);
+    const input = Readable.from([
+      'remember --value repl\n',
+      'recall\n',
+      'exit\n',
+    ]);
     const { output, text } = createCapturingWritable();
     await runInteractiveRepl(runtime, input, output);
     expect(text()).toContain('DATA');
@@ -433,7 +482,9 @@ describe('completeReplLine', () => {
   it('completes flags, both at the start of a line and after an operation', () => {
     const { runtime } = createRuntime();
 
-    expect(runtime.completeReplLine('--j')).toEqual([['--json', '--json-file']]);
+    expect(runtime.completeReplLine('--j')).toEqual([
+      ['--json', '--json-file'],
+    ]);
     expect(runtime.completeReplLine('remember --')[0]).toEqual(
       expect.arrayContaining(['--help', '--json', '--json-file', '--format']),
     );
@@ -493,7 +544,9 @@ describe('errors from a handler', () => {
   });
 
   it('falls back to HANDLER_FAILURE only when the error carries no code of its own', async () => {
-    const envelope = await failWith(new Error('something broke')).dispatch('boom');
+    const envelope = await failWith(new Error('something broke')).dispatch(
+      'boom',
+    );
 
     expect(envelope.error?.code).toBe('HANDLER_FAILURE');
     expect(envelope.error?.message).toBe('something broke');
@@ -636,7 +689,12 @@ describe('a handler that reports an incomplete run', () => {
     });
 
   it('reports `incomplete`, not `success`, when the run stopped part-way', async () => {
-    const stopped = { workflowId: 'w1', steps: [{ step: 'cut', outcome: 'refused' }], complete: false, stoppedAt: 'cut' };
+    const stopped = {
+      workflowId: 'w1',
+      steps: [{ step: 'cut', outcome: 'refused' }],
+      complete: false,
+      stoppedAt: 'cut',
+    };
 
     const envelope = await runtimeFor(stopped).dispatch('demo.sequence', {});
 
@@ -647,7 +705,11 @@ describe('a handler that reports an incomplete run', () => {
   });
 
   it('keeps the payload, because the payload is how a caller resumes', async () => {
-    const stopped = { complete: false, stoppedAt: 'review', steps: [{ step: 'review', outcome: 'refused' }] };
+    const stopped = {
+      complete: false,
+      stoppedAt: 'review',
+      steps: [{ step: 'review', outcome: 'refused' }],
+    };
 
     const envelope = await runtimeFor(stopped).dispatch('demo.sequence', {});
 
@@ -657,7 +719,12 @@ describe('a handler that reports an incomplete run', () => {
   });
 
   it('still reports `success` when the same sequence ran to completion', async () => {
-    const finished = { workflowId: 'w1', steps: [{ step: 'cut', outcome: 'done' }], complete: true, stoppedAt: null };
+    const finished = {
+      workflowId: 'w1',
+      steps: [{ step: 'cut', outcome: 'done' }],
+      complete: true,
+      stoppedAt: null,
+    };
 
     const envelope = await runtimeFor(finished).dispatch('demo.sequence', {});
 
@@ -669,7 +736,10 @@ describe('a handler that reports an incomplete run', () => {
 
   it('leaves a payload that says nothing about completeness alone', async () => {
     // Most operations are not sequences. `complete` is the opt-in, and its absence is not a stop.
-    const envelope = await runtimeFor({ rows: [], total: 0 }).dispatch('demo.sequence', {});
+    const envelope = await runtimeFor({ rows: [], total: 0 }).dispatch(
+      'demo.sequence',
+      {},
+    );
 
     expect(envelope.status).toBe('success');
     expect(envelope.exitCode).toBe(TOOL_EXIT_CODES.success);

@@ -19,7 +19,13 @@ export interface ToolBus {
  * which is how the consumer types a schema.
  */
 export type OperationInputSchema = {
-  readonly type: 'object' | 'string' | 'number' | 'integer' | 'boolean' | 'array';
+  readonly type:
+    | 'object'
+    | 'string'
+    | 'number'
+    | 'integer'
+    | 'boolean'
+    | 'array';
   readonly properties?: { readonly [name: string]: OperationInputSchema };
   readonly required?: readonly string[];
   readonly enum?: readonly (string | number)[];

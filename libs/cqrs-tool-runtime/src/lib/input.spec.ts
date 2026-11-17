@@ -32,21 +32,25 @@ describe('input validation', () => {
       ['a number', { id: 7 }],
       ['an array', { id: ['x'] }],
     ])('refuses %s', (described, input) => {
-      expect(() => requiredString(input as Record<string, unknown>, 'id', 'op')).toThrow(
+      expect(() =>
+        requiredString(input as Record<string, unknown>, 'id', 'op'),
+      ).toThrow(
         new RegExp(`op needs a non-empty string 'id'; received ${described}`),
       );
     });
 
     // 🔴 The case the old `str(…, '')` produced by design: whitespace is not a value.
     it('refuses a blank string rather than passing it through', () => {
-      expect(() => requiredString({ id: '   ' }, 'id', 'op')).toThrow(/non-empty string 'id'/);
+      expect(() => requiredString({ id: '   ' }, 'id', 'op')).toThrow(
+        /non-empty string 'id'/,
+      );
     });
 
     // The message names the key as the *caller* typed it, not the domain field it becomes.
     it('names a nested path when one is given', () => {
-      expect(() => requiredString({}, 'title', 'document.add', 'document.title')).toThrow(
-        /'document\.title'/,
-      );
+      expect(() =>
+        requiredString({}, 'title', 'document.add', 'document.title'),
+      ).toThrow(/'document\.title'/);
     });
   });
 
@@ -72,7 +76,9 @@ describe('input validation', () => {
     });
 
     it('refuses null, which typeof calls an object', () => {
-      expect(() => requiredObject({ doc: null }, 'doc', 'op')).toThrow(/received null/);
+      expect(() => requiredObject({ doc: null }, 'doc', 'op')).toThrow(
+        /received null/,
+      );
     });
 
     it('defaults an absent optional object to {}', () => {
@@ -82,7 +88,9 @@ describe('input validation', () => {
 
   describe('arrays', () => {
     it('defaults an absent array to []', () => {
-      expect(optionalArray({}, 'evidence', 'op', nonEmptyStringElement('op'))).toEqual([]);
+      expect(
+        optionalArray({}, 'evidence', 'op', nonEmptyStringElement('op')),
+      ).toEqual([]);
     });
 
     /**
@@ -92,13 +100,23 @@ describe('input validation', () => {
      */
     it('refuses a non-array rather than silently returning []', () => {
       expect(() =>
-        optionalArray({ evidence: 'certified' }, 'evidence', 'op', nonEmptyStringElement('op')),
+        optionalArray(
+          { evidence: 'certified' },
+          'evidence',
+          'op',
+          nonEmptyStringElement('op'),
+        ),
       ).toThrow(/needs an array 'evidence'; received a string/);
     });
 
     it('names the index of a bad element', () => {
       expect(() =>
-        optionalArray({ evidence: ['ok', ''] }, 'evidence', 'op', nonEmptyStringElement('op')),
+        optionalArray(
+          { evidence: ['ok', ''] },
+          'evidence',
+          'op',
+          nonEmptyStringElement('op'),
+        ),
       ).toThrow(/'evidence\[1\]' must be a non-empty string/);
     });
   });
@@ -133,7 +151,9 @@ describe('input validation', () => {
             name: 'demo.op',
             summary: 'demo',
             kind: 'query',
-            validate: (input) => ({ id: requiredString(input, 'id', 'demo.op') }),
+            validate: (input) => ({
+              id: requiredString(input, 'id', 'demo.op'),
+            }),
             createRequest: (input) => ({ id: input['id'] }),
           },
         ],
@@ -148,13 +168,20 @@ describe('input validation', () => {
     });
 
     it('dispatches when the input is valid', async () => {
-      expect((await runtime().dispatch('demo.op', { id: 'x' })).status).toBe('success');
+      expect((await runtime().dispatch('demo.op', { id: 'x' })).status).toBe(
+        'success',
+      );
     });
 
     // 🔴 A caller error, not a server error. A string or array where the input object should be —
     // `{"input": "nope"}` over HTTP or the sidecar — used to reach `probeInput`'s Proxy and surface
     // as HANDLER_FAILURE at exit 1 / HTTP 500 (d-20260912-cqrstoolruntime-dispatch-answers-a-non-object).
-    it.each([['a string', 'nope'], ['an array', ['nope']], ['null', null], ['a number', 7]])(
+    it.each([
+      ['a string', 'nope'],
+      ['an array', ['nope']],
+      ['null', null],
+      ['a number', 7],
+    ])(
       'reports %s as the input as INVALID_INPUT at exit 2, before any hook runs',
       async (_label, input) => {
         const envelope = await runtime().dispatch('demo.op', input as never);

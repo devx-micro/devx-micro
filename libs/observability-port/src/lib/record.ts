@@ -8,7 +8,13 @@ import { isContentId, type ContentId } from './content-id';
 
 export const OBSERVATION_SCHEMA_VERSION = 1;
 
-export const OBSERVATION_KINDS = ['operation', 'workflow-step', 'tool-call', 'dispatch', 'inference-run'] as const;
+export const OBSERVATION_KINDS = [
+  'operation',
+  'workflow-step',
+  'tool-call',
+  'dispatch',
+  'inference-run',
+] as const;
 export type ObservationKind = (typeof OBSERVATION_KINDS)[number];
 
 export const OUTCOMES = ['success', 'failure', 'blocked', 'skipped'] as const;
@@ -74,13 +80,22 @@ export interface ObservationRecord {
  * through the observability context's own `recordExternal`, not through the port a seam depends on. A caller that
  * smuggles the key past the type is refused at runtime by the recorder.
  */
-export type ObservationInput = Omit<ObservationRecord, 'schemaVersion' | 'external'>;
+export type ObservationInput = Omit<
+  ObservationRecord,
+  'schemaVersion' | 'external'
+>;
 
 const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
-const isNonEmpty = (value: unknown): boolean => typeof value === 'string' && value.trim() !== '';
-const isMeasure = (value: unknown): boolean => typeof value === 'number' && Number.isFinite(value) && value >= 0;
-const isUnitInterval = (value: unknown): boolean => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
+const isNonEmpty = (value: unknown): boolean =>
+  typeof value === 'string' && value.trim() !== '';
+const isMeasure = (value: unknown): boolean =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0;
+const isUnitInterval = (value: unknown): boolean =>
+  typeof value === 'number' &&
+  Number.isFinite(value) &&
+  value >= 0 &&
+  value <= 1;
 
 const UTC_TIMESTAMP = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{1,9})?Z$/;
 
@@ -90,21 +105,50 @@ function parseUtcTimestamp(value: unknown): number | undefined {
   const millis = Date.parse(value);
   if (Number.isNaN(millis)) return undefined;
   // V8 rolls an impossible date over; a round trip through the calendar part exposes it.
-  return new Date(millis).toISOString().slice(0, 19) === value.slice(0, 19) ? millis : undefined;
+  return new Date(millis).toISOString().slice(0, 19) === value.slice(0, 19)
+    ? millis
+    : undefined;
 }
 
 const TOP_LEVEL_FIELDS = [
-  'schemaVersion', 'kind', 'operator', 'operation', 'model', 'beforeTimestamp', 'afterTimestamp',
-  'durationMs', 'latencyMs', 'external', 'refs', 'detail', 'withheld', 'result',
+  'schemaVersion',
+  'kind',
+  'operator',
+  'operation',
+  'model',
+  'beforeTimestamp',
+  'afterTimestamp',
+  'durationMs',
+  'latencyMs',
+  'external',
+  'refs',
+  'detail',
+  'withheld',
+  'result',
 ];
-const RESULT_FIELDS = ['outcome', 'evidence', 'iterations', 'escalated', 'confidence'];
+const RESULT_FIELDS = [
+  'outcome',
+  'evidence',
+  'iterations',
+  'escalated',
+  'confidence',
+];
 const MODEL_FIELDS = ['provider', 'modelId', 'version', 'route'];
 const CONFIDENCE_FIELDS = ['selfReported', 'derived'];
 /** Parts of the record itself that can be withheld without being a separately stored ref (ADR-072 D9). */
 const RECORD_OWN_WITHHELD = ['detail', 'evidence'];
 
-const unknownFields = (value: Record<string, unknown>, allowed: readonly string[], where: string): string[] =>
-  Object.keys(value).filter((key) => !allowed.includes(key)).map((key) => `${where}: unknown field ${key} (the field list is closed, ADR-072 D4)`);
+const unknownFields = (
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+  where: string,
+): string[] =>
+  Object.keys(value)
+    .filter((key) => !allowed.includes(key))
+    .map(
+      (key) =>
+        `${where}: unknown field ${key} (the field list is closed, ADR-072 D4)`,
+    );
 
 /** Text for whatever was thrown, even a value whose own `toString` throws. */
 function describeThrown(thrown: unknown): string {
@@ -149,61 +193,109 @@ function collectProblems(input: unknown): readonly string[] {
   if (!isPlainRecord(input)) return ['the record must be an object'];
   const record = input;
   const problems: string[] = unknownFields(record, TOP_LEVEL_FIELDS, 'record');
-  if (record['schemaVersion'] !== OBSERVATION_SCHEMA_VERSION) problems.push(`schemaVersion must be ${OBSERVATION_SCHEMA_VERSION}`);
-  if (!OBSERVATION_KINDS.includes(record['kind'] as ObservationKind)) problems.push(`kind must be one of ${OBSERVATION_KINDS.join(', ')}`);
-  if (!isNonEmpty(record['operator'])) problems.push('operator must be a non-empty string');
-  if (!isNonEmpty(record['operation'])) problems.push('operation must be a non-empty string');
-  if (parseUtcTimestamp(record['beforeTimestamp']) === undefined) problems.push('beforeTimestamp must be a UTC ISO-8601 timestamp ending in Z');
-  if (parseUtcTimestamp(record['afterTimestamp']) === undefined) problems.push('afterTimestamp must be a UTC ISO-8601 timestamp ending in Z');
+  if (record['schemaVersion'] !== OBSERVATION_SCHEMA_VERSION)
+    problems.push(`schemaVersion must be ${OBSERVATION_SCHEMA_VERSION}`);
+  if (!OBSERVATION_KINDS.includes(record['kind'] as ObservationKind))
+    problems.push(`kind must be one of ${OBSERVATION_KINDS.join(', ')}`);
+  if (!isNonEmpty(record['operator']))
+    problems.push('operator must be a non-empty string');
+  if (!isNonEmpty(record['operation']))
+    problems.push('operation must be a non-empty string');
+  if (parseUtcTimestamp(record['beforeTimestamp']) === undefined)
+    problems.push(
+      'beforeTimestamp must be a UTC ISO-8601 timestamp ending in Z',
+    );
+  if (parseUtcTimestamp(record['afterTimestamp']) === undefined)
+    problems.push(
+      'afterTimestamp must be a UTC ISO-8601 timestamp ending in Z',
+    );
   // No ordering check: the wall clock can step backwards (ADR-072 D5), and a unit that ran correctly
   // must still be recordable. `durationMs` comes from the monotonic clock, not from these two.
   for (const field of ['durationMs', 'latencyMs']) {
-    if (record[field] !== undefined && !isMeasure(record[field])) problems.push(`${field} must be a finite number >= 0, or omitted`);
+    if (record[field] !== undefined && !isMeasure(record[field]))
+      problems.push(`${field} must be a finite number >= 0, or omitted`);
   }
   if (record['model'] !== undefined) {
     const model = record['model'];
     if (!isPlainRecord(model)) problems.push('model must be an object');
     else {
       problems.push(...unknownFields(model, MODEL_FIELDS, 'model'));
-      if (model['route'] !== 'local' && model['route'] !== 'cloud') problems.push("model.route must be 'local' or 'cloud'");
-      if (!isNonEmpty(model['provider']) || !isNonEmpty(model['modelId'])) problems.push('model.provider and model.modelId must be non-empty');
-      if (model['version'] !== undefined && !isNonEmpty(model['version'])) problems.push('model.version must be a non-empty string, or omitted');
+      if (model['route'] !== 'local' && model['route'] !== 'cloud')
+        problems.push("model.route must be 'local' or 'cloud'");
+      if (!isNonEmpty(model['provider']) || !isNonEmpty(model['modelId']))
+        problems.push('model.provider and model.modelId must be non-empty');
+      if (model['version'] !== undefined && !isNonEmpty(model['version']))
+        problems.push('model.version must be a non-empty string, or omitted');
     }
   }
-  if (record['external'] !== undefined && record['external'] !== true) problems.push('external must be exactly true when present');
+  if (record['external'] !== undefined && record['external'] !== true)
+    problems.push('external must be exactly true when present');
   let refNames: string[] = [];
   if (record['refs'] !== undefined) {
-    if (!isPlainRecord(record['refs'])) problems.push('refs must be an object of content ids');
+    if (!isPlainRecord(record['refs']))
+      problems.push('refs must be an object of content ids');
     else {
       refNames = Object.keys(record['refs']);
-      for (const [name, ref] of Object.entries(record['refs'])) if (!isContentId(ref)) problems.push(`refs.${name} must be a content id`);
+      for (const [name, ref] of Object.entries(record['refs']))
+        if (!isContentId(ref))
+          problems.push(`refs.${name} must be a content id`);
     }
   }
-  if (record['detail'] !== undefined && !isPlainRecord(record['detail'])) problems.push('detail must be an object');
+  if (record['detail'] !== undefined && !isPlainRecord(record['detail']))
+    problems.push('detail must be an object');
   if (record['withheld'] !== undefined) {
-    if (!isPlainRecord(record['withheld'])) problems.push('withheld must be an object of reasons');
+    if (!isPlainRecord(record['withheld']))
+      problems.push('withheld must be an object of reasons');
     else {
       for (const [name, reason] of Object.entries(record['withheld'])) {
         if (!refNames.includes(name) && !RECORD_OWN_WITHHELD.includes(name)) {
-          problems.push(`withheld.${name} must name a ref that was replaced, or one of ${RECORD_OWN_WITHHELD.join(', ')}`);
+          problems.push(
+            `withheld.${name} must name a ref that was replaced, or one of ${RECORD_OWN_WITHHELD.join(', ')}`,
+          );
         }
-        if (!isNonEmpty(reason)) problems.push(`withheld.${name} must be a non-empty reason`);
+        if (!isNonEmpty(reason))
+          problems.push(`withheld.${name} must be a non-empty reason`);
         // A present detail is allowed only after a PARTIAL redaction, which names what it dropped: `redacted: <kinds> (a, b)`.
         // The named properties must really be absent from the detail that remains.
         if (name === 'detail' && record['detail'] !== undefined) {
-          const named = typeof reason === 'string' ? /\(([^()]*)\)$/.exec(reason)?.[1] : undefined;
-          const names = named === undefined ? [] : named.split(',').map((part) => part.trim());
-          const present = isPlainRecord(record['detail']) ? Object.keys(record['detail']) : [];
+          const named =
+            typeof reason === 'string'
+              ? /\(([^()]*)\)$/.exec(reason)?.[1]
+              : undefined;
+          const names =
+            named === undefined
+              ? []
+              : named.split(',').map((part) => part.trim());
+          const present = isPlainRecord(record['detail'])
+            ? Object.keys(record['detail'])
+            : [];
           if (names.length === 0 || names.some((part) => part === '')) {
-            problems.push('withheld.detail claims the detail was withheld, but a detail is present and the reason names no dropped property');
-          } else if (names.some((part) => part !== '<unnamed>' && present.includes(part))) {
-            problems.push('withheld.detail names a property that is still present in the detail');
+            problems.push(
+              'withheld.detail claims the detail was withheld, but a detail is present and the reason names no dropped property',
+            );
+          } else if (
+            names.some((part) => part !== '<unnamed>' && present.includes(part))
+          ) {
+            problems.push(
+              'withheld.detail names a property that is still present in the detail',
+            );
           }
         }
         if (name === 'evidence') {
-          const entries = isPlainRecord(record['result']) && Array.isArray(record['result']['evidence']) ? record['result']['evidence'] : [];
-          if (!entries.some((entry) => typeof entry === 'string' && entry.startsWith('withheld:'))) {
-            problems.push('withheld.evidence claims evidence was withheld, but no evidence entry is a withheld marker');
+          const entries =
+            isPlainRecord(record['result']) &&
+            Array.isArray(record['result']['evidence'])
+              ? record['result']['evidence']
+              : [];
+          if (
+            !entries.some(
+              (entry) =>
+                typeof entry === 'string' && entry.startsWith('withheld:'),
+            )
+          ) {
+            problems.push(
+              'withheld.evidence claims evidence was withheld, but no evidence entry is a withheld marker',
+            );
           }
         }
       }
@@ -215,24 +307,58 @@ function collectProblems(input: unknown): readonly string[] {
     return problems;
   }
   problems.push(...unknownFields(result, RESULT_FIELDS, 'result'));
-  if (!OUTCOMES.includes(result['outcome'] as Outcome)) problems.push(`result.outcome must be one of ${OUTCOMES.join(', ')}`);
+  if (!OUTCOMES.includes(result['outcome'] as Outcome))
+    problems.push(`result.outcome must be one of ${OUTCOMES.join(', ')}`);
   const evidence = result['evidence'];
-  if (!Array.isArray(evidence) || !evidence.every(isNonEmpty)) problems.push('result.evidence must be an array of non-empty strings');
-  else if ((result['outcome'] === 'failure' || result['outcome'] === 'blocked') && evidence.length === 0) {
-    problems.push(`result.evidence must be non-empty for a ${String(result['outcome'])} (at least the error class)`);
+  if (!Array.isArray(evidence) || !evidence.every(isNonEmpty))
+    problems.push('result.evidence must be an array of non-empty strings');
+  else if (
+    (result['outcome'] === 'failure' || result['outcome'] === 'blocked') &&
+    evidence.length === 0
+  ) {
+    problems.push(
+      `result.evidence must be non-empty for a ${String(result['outcome'])} (at least the error class)`,
+    );
   }
-  if (result['iterations'] !== undefined && !(Number.isInteger(result['iterations']) && (result['iterations'] as number) >= 0)) {
+  if (
+    result['iterations'] !== undefined &&
+    !(
+      Number.isInteger(result['iterations']) &&
+      (result['iterations'] as number) >= 0
+    )
+  ) {
     problems.push('result.iterations must be a whole number >= 0, or omitted');
   }
-  if (result['escalated'] !== undefined && typeof result['escalated'] !== 'boolean') problems.push('result.escalated must be a boolean, or omitted');
+  if (
+    result['escalated'] !== undefined &&
+    typeof result['escalated'] !== 'boolean'
+  )
+    problems.push('result.escalated must be a boolean, or omitted');
   if (result['confidence'] !== undefined) {
     const confidence = result['confidence'];
-    if (!isPlainRecord(confidence)) problems.push('result.confidence must be an object');
+    if (!isPlainRecord(confidence))
+      problems.push('result.confidence must be an object');
     else {
-      problems.push(...unknownFields(confidence, CONFIDENCE_FIELDS, 'result.confidence'));
-      if (confidence['selfReported'] === undefined && confidence['derived'] === undefined) problems.push('result.confidence must be omitted when it has no member');
-      if (confidence['selfReported'] !== undefined && !isUnitInterval(confidence['selfReported'])) problems.push('result.confidence.selfReported must be within 0 to 1');
-      if (confidence['derived'] !== undefined && !isUnitInterval(confidence['derived'])) problems.push('result.confidence.derived must be within 0 to 1');
+      problems.push(
+        ...unknownFields(confidence, CONFIDENCE_FIELDS, 'result.confidence'),
+      );
+      if (
+        confidence['selfReported'] === undefined &&
+        confidence['derived'] === undefined
+      )
+        problems.push(
+          'result.confidence must be omitted when it has no member',
+        );
+      if (
+        confidence['selfReported'] !== undefined &&
+        !isUnitInterval(confidence['selfReported'])
+      )
+        problems.push('result.confidence.selfReported must be within 0 to 1');
+      if (
+        confidence['derived'] !== undefined &&
+        !isUnitInterval(confidence['derived'])
+      )
+        problems.push('result.confidence.derived must be within 0 to 1');
     }
   }
   return problems;

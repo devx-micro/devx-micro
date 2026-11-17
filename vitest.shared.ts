@@ -14,8 +14,14 @@ const ROOT = dirname(fileURLToPath(import.meta.url));
  * the failure mode is a test importing a *stale built* copy of a library instead of its source —
  * which looks like a passing test of the wrong code.
  */
-export const workspaceAliases = (): ReadonlyArray<{ find: string; replacement: string }> => {
-  const raw = readFileSync(resolve(ROOT, 'tsconfig.base.json'), 'utf8').replace(/^\s*\/\/.*$/gm, '');
+export const workspaceAliases = (): ReadonlyArray<{
+  find: string;
+  replacement: string;
+}> => {
+  const raw = readFileSync(resolve(ROOT, 'tsconfig.base.json'), 'utf8').replace(
+    /^\s*\/\/.*$/gm,
+    '',
+  );
   const paths: Record<string, readonly string[]> =
     JSON.parse(raw).compilerOptions?.paths ?? {};
   return Object.entries(paths).map(([find, targets]) => ({
@@ -58,7 +64,9 @@ export const swcDecoratorMetadata = (): Plugin => ({
 });
 
 /** Per-project coverage ratchets; empty until a project needs one. */
-const RATCHET: Readonly<Record<string, { lines: number; statements: number; functions: number }>> = {};
+const RATCHET: Readonly<
+  Record<string, { lines: number; statements: number; functions: number }>
+> = {};
 
 /**
  * The settings every project's suite shares. `name` is the Nx project name, and it also decides
@@ -117,7 +125,7 @@ export const testDefaults = (name: string) => ({
       // so they are structurally unreachable rather than untested. `api-gateway-e2e` reported 0% of
       // 7 lines on that basis alone and failed a gate about production code.
       '**/src/support/**',
-        '**/src/generated/**',
+      '**/src/generated/**',
     ],
     // 🔴 **80% on lines, statements and functions — enforced, and failing today.** Founder decision
     // 2026-09-01: set the gate now and fix the red, rather than ratchet from a number nobody chose.

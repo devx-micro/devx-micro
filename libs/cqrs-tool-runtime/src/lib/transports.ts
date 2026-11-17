@@ -10,7 +10,12 @@ import {
   ToolRuntimeError,
 } from './contracts';
 import { CqrsToolRuntime, parseToolArguments } from './cqrs-tool-runtime';
-import { bindOperationLine, describeVariable, parseReplCommand, type VariableLookup } from './repl-language';
+import {
+  bindOperationLine,
+  describeVariable,
+  parseReplCommand,
+  type VariableLookup,
+} from './repl-language';
 
 const defaultIo: ToolIo = {
   stdout: (line) => process.stdout.write(`${line}\n`),
@@ -226,19 +231,30 @@ export function completeReplWithVariables(
   variables: VariableIndex | undefined,
 ): string[] {
   // No session board: no variables, and no variable commands to offer.
-  if (variables === undefined || !runtime.sessionBoard) return runtime.completeReplLine(line).flat();
+  if (variables === undefined || !runtime.sessionBoard)
+    return runtime.completeReplLine(line).flat();
   const last = line.split(/\s+/).at(-1) ?? '';
   if (last.startsWith('$') && !last.startsWith('$$')) {
     const dot = last.indexOf('.');
     if (dot === -1) {
-      return [...variables.keys()].map((name) => `$${name}`).filter((candidate) => candidate.startsWith(last));
+      return [...variables.keys()]
+        .map((name) => `$${name}`)
+        .filter((candidate) => candidate.startsWith(last));
     }
     const name = last.slice(1, dot);
-    return (variables.get(name) ?? []).filter((field) => /^[A-Za-z0-9_-]+$/.test(field)).map((field) => `$${name}.${field}`).filter((candidate) => candidate.startsWith(last));
+    return (variables.get(name) ?? [])
+      .filter((field) => /^[A-Za-z0-9_-]+$/.test(field))
+      .map((field) => `$${name}.${field}`)
+      .filter((candidate) => candidate.startsWith(last));
   }
   const base = runtime.completeReplLine(line).flat();
   if (line.trim() === '' || !line.includes(' ')) {
-    return [...base, ...['vars', 'set', 'unset', 'board'].filter((c) => c.startsWith(line.trim()) && !base.includes(c))];
+    return [
+      ...base,
+      ...['vars', 'set', 'unset', 'board'].filter(
+        (c) => c.startsWith(line.trim()) && !base.includes(c),
+      ),
+    ];
   }
   return base;
 }
@@ -271,7 +287,12 @@ export async function runInteractiveRepl(
       const next = new Map<string, readonly string[]>();
       for (const name of await board.names(sessionId)) {
         const { value } = await board.get(sessionId, name);
-        next.set(name, typeof value === 'object' && value !== null && !Array.isArray(value) ? Object.keys(value) : []);
+        next.set(
+          name,
+          typeof value === 'object' && value !== null && !Array.isArray(value)
+            ? Object.keys(value)
+            : [],
+        );
       }
       variables.clear();
       for (const [name, fields] of next) variables.set(name, fields);
@@ -279,7 +300,9 @@ export async function runInteractiveRepl(
       // keep the previous index
     }
   };
-  const lookup: VariableLookup | undefined = board ? (name) => board.get(sessionId, name) : undefined;
+  const lookup: VariableLookup | undefined = board
+    ? (name) => board.get(sessionId, name)
+    : undefined;
 
   output.write(
     `${runtime.help()}\n\nEnter commands with flags or JSON requests; type 'exit' or 'quit' to quit.\n` +
@@ -293,8 +316,15 @@ export async function runInteractiveRepl(
       // readline replaces the text it is handed back as the second element, so that must be the word being
       // completed, not the whole line, or a completion after the first word inserts nothing.
       const word = line.split(/\s+/).at(-1) ?? '';
-      const candidates = completeReplWithVariables(runtime, line, board ? variables : undefined);
-      return [candidates.filter((candidate) => candidate.startsWith(word)), word];
+      const candidates = completeReplWithVariables(
+        runtime,
+        line,
+        board ? variables : undefined,
+      );
+      return [
+        candidates.filter((candidate) => candidate.startsWith(word)),
+        word,
+      ];
     },
   });
   let active = true;
@@ -314,7 +344,14 @@ export async function runInteractiveRepl(
       operation: mine ? 'parse' : 'repl',
       error: {
         // Exactly as before this phase, a malformed line is INVALID_INPUT; the one new code is the one that says why variables are unavailable.
-        code: error instanceof ToolRuntimeError && error.code === 'NO_SESSION_BOARD' ? error.code : mine ? 'INVALID_INPUT' : typeof carried === 'string' ? carried : 'HANDLER_FAILURE',
+        code:
+          error instanceof ToolRuntimeError && error.code === 'NO_SESSION_BOARD'
+            ? error.code
+            : mine
+              ? 'INVALID_INPUT'
+              : typeof carried === 'string'
+                ? carried
+                : 'HANDLER_FAILURE',
         message: error instanceof Error ? error.message : 'Invalid input',
       },
     });
@@ -323,7 +360,11 @@ export async function runInteractiveRepl(
   const dispatch = async (text: string) => {
     const request = await bindOperationLine(text, lookup);
     lineNumber += 1;
-    return runtime.dispatch(request.operation, request.input, `${sessionId}.${lineNumber}`);
+    return runtime.dispatch(
+      request.operation,
+      request.input,
+      `${sessionId}.${lineNumber}`,
+    );
   };
 
   prompt();
@@ -346,45 +387,75 @@ export async function runInteractiveRepl(
             if (active) prompt();
             continue;
           }
-          const operationNames = new Set(runtime.listOperations().map((o) => o.name));
-          const command = parseReplCommand(trimmed, (name) => operationNames.has(name));
+          const operationNames = new Set(
+            runtime.listOperations().map((o) => o.name),
+          );
+          const command = parseReplCommand(trimmed, (name) =>
+            operationNames.has(name),
+          );
           if (command.kind === 'operation') {
             output.write(formatReplResponse(await dispatch(command.line)));
           } else if (!board) {
-            output.write(failure(new ToolRuntimeError('NO_SESSION_BOARD', NO_SESSION_BOARD, TOOL_EXIT_CODES.usage)));
+            output.write(
+              failure(
+                new ToolRuntimeError(
+                  'NO_SESSION_BOARD',
+                  NO_SESSION_BOARD,
+                  TOOL_EXIT_CODES.usage,
+                ),
+              ),
+            );
           } else if (command.kind === 'set') {
             const envelope = await dispatch(command.line);
             output.write(formatReplResponse(envelope));
             if (envelope.status === 'success') {
               try {
-                await board.set(sessionId, command.name, envelope.data === undefined ? null : envelope.data);
+                await board.set(
+                  sessionId,
+                  command.name,
+                  envelope.data === undefined ? null : envelope.data,
+                );
               } catch (error) {
                 // The operation has already run, and running it again would repeat its effect: say so.
-                output.write(`$${command.name} not set: ${error instanceof Error ? error.message : 'the store refused it'} (the operation itself ran, so do not repeat it).\n`);
+                output.write(
+                  `$${command.name} not set: ${error instanceof Error ? error.message : 'the store refused it'} (the operation itself ran, so do not repeat it).\n`,
+                );
                 if (active) prompt();
                 continue;
               }
               output.write(`$${command.name} set.\n`);
               await refresh();
             } else {
-              output.write(`$${command.name} not set: the operation did not succeed.\n`);
+              output.write(
+                `$${command.name} not set: the operation did not succeed.\n`,
+              );
             }
           } else if (command.kind === 'vars') {
             const names = await board.names(sessionId);
             if (names.length === 0) output.write('No variables set.\n');
             for (const name of names) {
-              output.write(`$${name}  ${describeVariable((await board.get(sessionId, name)).value)}\n`);
+              output.write(
+                `$${name}  ${describeVariable((await board.get(sessionId, name)).value)}\n`,
+              );
             }
           } else if (command.kind === 'unset') {
-            output.write((await board.unset(sessionId, command.name)) ? `$${command.name} unset.\n` : `$${command.name} was not set.\n`);
+            output.write(
+              (await board.unset(sessionId, command.name))
+                ? `$${command.name} unset.\n`
+                : `$${command.name} was not set.\n`,
+            );
             await refresh();
           } else if (command.kind === 'attach') {
             const result = await board.attach(sessionId, command.board);
-            output.write(`Attached board:${command.board}: ${result.attached} variable(s)${result.skipped ? `, ${result.skipped} skipped (key is not a variable name)` : ''}.\n`);
+            output.write(
+              `Attached board:${command.board}: ${result.attached} variable(s)${result.skipped ? `, ${result.skipped} skipped (key is not a variable name)` : ''}.\n`,
+            );
             await refresh();
           } else if (command.kind === 'save') {
             await board.save(sessionId, command.name);
-            output.write(`Saved the session's variables as board:${command.name}.\n`);
+            output.write(
+              `Saved the session's variables as board:${command.name}.\n`,
+            );
           }
         } catch (error) {
           output.write(failure(error));

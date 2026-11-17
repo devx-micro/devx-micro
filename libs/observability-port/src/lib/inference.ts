@@ -53,7 +53,12 @@ export const ITERATION_DECISIONS = ['accepted', 'rejected'] as const;
 export type IterationDecision = (typeof ITERATION_DECISIONS)[number];
 
 /** Why an iteration was decided as it was; `unevaluable` is the code ADR-073 D3 names. */
-export const DECISION_REASONS = ['no-unmet-requirement', 'requirement-not-met', 'unevaluable', 'no-requirements'] as const;
+export const DECISION_REASONS = [
+  'no-unmet-requirement',
+  'requirement-not-met',
+  'unevaluable',
+  'no-requirements',
+] as const;
 export type DecisionReason = (typeof DECISION_REASONS)[number];
 
 export interface RequirementRecord {
@@ -112,10 +117,15 @@ export interface InferenceRunDetail {
   /** That of the final iteration; omitted when no iteration ran. */
   readonly partial?: boolean;
   /** Token counts, present only when the harness reported them for a run outside our dispatch port (ADR-072 D8). Never `0` for "unknown". */
-  readonly usage?: { readonly inputTokens?: number; readonly outputTokens?: number };
+  readonly usage?: {
+    readonly inputTokens?: number;
+    readonly outputTokens?: number;
+  };
 }
 
-export function summarizeEvaluation(entries: readonly EvaluationEntry[]): EvaluationSummary {
+export function summarizeEvaluation(
+  entries: readonly EvaluationEntry[],
+): EvaluationSummary {
   let met = 0;
   let notMet = 0;
   let notEvaluated = 0;
@@ -128,7 +138,9 @@ export function summarizeEvaluation(entries: readonly EvaluationEntry[]): Evalua
 }
 
 /** ADR-073 D6: `met / (met + notMet)`, omitted when that denominator is 0. */
-export function derivedConfidence(summary: EvaluationSummary): number | undefined {
+export function derivedConfidence(
+  summary: EvaluationSummary,
+): number | undefined {
   const denominator = summary.met + summary.notMet;
   return denominator === 0 ? undefined : summary.met / denominator;
 }
@@ -146,21 +158,50 @@ export interface IterationDecisionResult {
  * is rejected: with every requirement `not-evaluated` the reason is `unevaluable`, and with no requirement at all
  * it is `no-requirements` (an incomplete contract, D8). `partial` is true for any `not-evaluated` entry.
  */
-export function decideIteration(entries: readonly EvaluationEntry[]): IterationDecisionResult {
+export function decideIteration(
+  entries: readonly EvaluationEntry[],
+): IterationDecisionResult {
   const summary = summarizeEvaluation(entries);
   const partial = summary.notEvaluated > 0;
   const derived = derivedConfidence(summary);
   const confidence = derived === undefined ? {} : { confidence: { derived } };
-  if (summary.notMet > 0) return { decision: 'rejected', reason: 'requirement-not-met', summary, partial, ...confidence };
-  if (summary.met > 0) return { decision: 'accepted', reason: 'no-unmet-requirement', summary, partial, ...confidence };
-  return { decision: 'rejected', reason: entries.length === 0 ? 'no-requirements' : 'unevaluable', summary, partial, ...confidence };
+  if (summary.notMet > 0)
+    return {
+      decision: 'rejected',
+      reason: 'requirement-not-met',
+      summary,
+      partial,
+      ...confidence,
+    };
+  if (summary.met > 0)
+    return {
+      decision: 'accepted',
+      reason: 'no-unmet-requirement',
+      summary,
+      partial,
+      ...confidence,
+    };
+  return {
+    decision: 'rejected',
+    reason: entries.length === 0 ? 'no-requirements' : 'unevaluable',
+    summary,
+    partial,
+    ...confidence,
+  };
 }
 
 const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
-const isNonEmpty = (value: unknown): value is string => typeof value === 'string' && value.trim() !== '';
-const unknownFields = (value: Record<string, unknown>, allowed: readonly string[], where: string): string[] =>
-  Object.keys(value).filter((key) => !allowed.includes(key)).map((key) => `${where}: unknown field ${key}`);
+const isNonEmpty = (value: unknown): value is string =>
+  typeof value === 'string' && value.trim() !== '';
+const unknownFields = (
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+  where: string,
+): string[] =>
+  Object.keys(value)
+    .filter((key) => !allowed.includes(key))
+    .map((key) => `${where}: unknown field ${key}`);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const UTC = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{1,9})?Z$/;
@@ -174,7 +215,10 @@ function describeThrown(thrown: unknown): string {
 }
 
 /** Run a collector and the final hashability check; never throws. */
-function validated(input: unknown, collect: (input: unknown) => string[]): readonly string[] {
+function validated(
+  input: unknown,
+  collect: (input: unknown) => string[],
+): readonly string[] {
   try {
     const problems = collect(input);
     if (problems.length === 0) {
@@ -192,26 +236,43 @@ function validated(input: unknown, collect: (input: unknown) => string[]): reado
 
 function withheldProblems(value: unknown, where: string): string[] {
   if (value === undefined) return [];
-  if (!isPlainRecord(value)) return [`${where}.withheld must be an object of reasons`];
-  return Object.entries(value).filter(([, reason]) => !isNonEmpty(reason)).map(([name]) => `${where}.withheld.${name} must be a non-empty reason`);
+  if (!isPlainRecord(value))
+    return [`${where}.withheld must be an object of reasons`];
+  return Object.entries(value)
+    .filter(([, reason]) => !isNonEmpty(reason))
+    .map(([name]) => `${where}.withheld.${name} must be a non-empty reason`);
 }
 
-const CONTRACT_FIELDS = ['schemaVersion', 'role', 'goal', 'requirements', 'input', 'assumptions', 'instructionRef', 'withheld'];
+const CONTRACT_FIELDS = [
+  'schemaVersion',
+  'role',
+  'goal',
+  'requirements',
+  'input',
+  'assumptions',
+  'instructionRef',
+  'withheld',
+];
 
 /** Every violation of the ADR-073 D2 rules a type cannot express; an empty list means valid and hashable. Never throws. */
 export function validateContract(input: unknown): readonly string[] {
   return validated(input, (value) => {
     if (!isPlainRecord(value)) return ['the contract must be an object'];
     const problems = unknownFields(value, CONTRACT_FIELDS, 'contract');
-    if (value['schemaVersion'] !== INFERENCE_SCHEMA_VERSION) problems.push(`schemaVersion must be ${INFERENCE_SCHEMA_VERSION}`);
-    if (!isNonEmpty(value['role'])) problems.push('role must be a non-empty string');
-    if (value['goal'] !== undefined && !isNonEmpty(value['goal'])) problems.push('goal must be a non-empty string, or omitted');
+    if (value['schemaVersion'] !== INFERENCE_SCHEMA_VERSION)
+      problems.push(`schemaVersion must be ${INFERENCE_SCHEMA_VERSION}`);
+    if (!isNonEmpty(value['role']))
+      problems.push('role must be a non-empty string');
+    if (value['goal'] !== undefined && !isNonEmpty(value['goal']))
+      problems.push('goal must be a non-empty string, or omitted');
     for (const ref of ['input', 'instructionRef']) {
-      if (value[ref] !== undefined && !isContentId(value[ref])) problems.push(`${ref} must be a content id, or omitted`);
+      if (value[ref] !== undefined && !isContentId(value[ref]))
+        problems.push(`${ref} must be a content id, or omitted`);
     }
     problems.push(...withheldProblems(value['withheld'], 'contract'));
     const requirements = value['requirements'];
-    if (!Array.isArray(requirements)) problems.push('requirements must be an array');
+    if (!Array.isArray(requirements))
+      problems.push('requirements must be an array');
     else {
       const seen = new Set<string>();
       requirements.forEach((item: unknown, index) => {
@@ -219,17 +280,34 @@ export function validateContract(input: unknown): readonly string[] {
           problems.push(`requirements[${index}] must be an object`);
           return;
         }
-        problems.push(...unknownFields(item, ['requirementId', 'text'], `requirements[${index}]`));
+        problems.push(
+          ...unknownFields(
+            item,
+            ['requirementId', 'text'],
+            `requirements[${index}]`,
+          ),
+        );
         if (!isNonEmpty(item['text'])) {
-          problems.push(`requirements[${index}].text must be a non-empty string`);
+          problems.push(
+            `requirements[${index}].text must be a non-empty string`,
+          );
           return;
         }
-        if (!isContentId(item['requirementId'])) problems.push(`requirements[${index}].requirementId must be a content id`);
+        if (!isContentId(item['requirementId']))
+          problems.push(
+            `requirements[${index}].requirementId must be a content id`,
+          );
         else {
-          if (seen.has(item['requirementId'])) problems.push(`duplicate requirementId ${item['requirementId']} (ADR-073 D2)`);
+          if (seen.has(item['requirementId']))
+            problems.push(
+              `duplicate requirementId ${item['requirementId']} (ADR-073 D2)`,
+            );
           seen.add(item['requirementId']);
           try {
-            if (requirementId(item['text']) !== item['requirementId']) problems.push(`requirements[${index}].requirementId does not match the digest of its text`);
+            if (requirementId(item['text']) !== item['requirementId'])
+              problems.push(
+                `requirements[${index}].requirementId does not match the digest of its text`,
+              );
           } catch {
             problems.push(`requirements[${index}].text is not well-formed`);
           }
@@ -237,14 +315,26 @@ export function validateContract(input: unknown): readonly string[] {
       });
     }
     const assumptions = value['assumptions'];
-    if (!Array.isArray(assumptions)) problems.push('assumptions must be an array');
+    if (!Array.isArray(assumptions))
+      problems.push('assumptions must be an array');
     else {
       assumptions.forEach((item: unknown, index) => {
-        if (!isPlainRecord(item)) problems.push(`assumptions[${index}] must be an object`);
+        if (!isPlainRecord(item))
+          problems.push(`assumptions[${index}] must be an object`);
         else {
-          problems.push(...unknownFields(item, ['text', 'origin'], `assumptions[${index}]`));
-          if (!isNonEmpty(item['text'])) problems.push(`assumptions[${index}].text must be a non-empty string`);
-          if (!(ASSUMPTION_ORIGINS as readonly unknown[]).includes(item['origin'])) problems.push(`assumptions[${index}].origin must be one of ${ASSUMPTION_ORIGINS.join(', ')}`);
+          problems.push(
+            ...unknownFields(item, ['text', 'origin'], `assumptions[${index}]`),
+          );
+          if (!isNonEmpty(item['text']))
+            problems.push(
+              `assumptions[${index}].text must be a non-empty string`,
+            );
+          if (
+            !(ASSUMPTION_ORIGINS as readonly unknown[]).includes(item['origin'])
+          )
+            problems.push(
+              `assumptions[${index}].origin must be one of ${ASSUMPTION_ORIGINS.join(', ')}`,
+            );
         }
       });
     }
@@ -253,15 +343,32 @@ export function validateContract(input: unknown): readonly string[] {
 }
 
 const ITERATION_FIELDS = [
-  'schemaVersion', 'kind', 'contractRef', 'runId', 'iteration', 'outputRef', 'evaluation', 'timestamp',
-  'evaluationSummary', 'partial', 'confidence', 'decision', 'reason', 'withheld',
+  'schemaVersion',
+  'kind',
+  'contractRef',
+  'runId',
+  'iteration',
+  'outputRef',
+  'evaluation',
+  'timestamp',
+  'evaluationSummary',
+  'partial',
+  'confidence',
+  'decision',
+  'reason',
+  'withheld',
 ];
 
 function entryProblems(item: unknown, index: number): string[] {
   const where = `evaluation[${index}]`;
   if (!isPlainRecord(item)) return [`${where} must be an object`];
-  const problems = unknownFields(item, ['requirementId', 'verdict', 'evidence', 'evaluator'], where);
-  if (!isContentId(item['requirementId'])) problems.push(`${where}.requirementId must be a content id`);
+  const problems = unknownFields(
+    item,
+    ['requirementId', 'verdict', 'evidence', 'evaluator'],
+    where,
+  );
+  if (!isContentId(item['requirementId']))
+    problems.push(`${where}.requirementId must be a content id`);
   const verdict = item['verdict'];
   if (!(VERDICTS as readonly unknown[]).includes(verdict)) {
     problems.push(`${where}.verdict must be one of ${VERDICTS.join(', ')}`);
@@ -269,18 +376,42 @@ function entryProblems(item: unknown, index: number): string[] {
   }
   const evaluator = item['evaluator'];
   if (verdict === 'not-evaluated') {
-    if (evaluator !== undefined) problems.push(`${where}.evaluator must be omitted for a not-evaluated entry (ADR-073 D3)`);
-    if (item['evidence'] !== undefined && !isNonEmpty(item['evidence'])) problems.push(`${where}.evidence must be a non-empty string, or omitted`);
+    if (evaluator !== undefined)
+      problems.push(
+        `${where}.evaluator must be omitted for a not-evaluated entry (ADR-073 D3)`,
+      );
+    if (item['evidence'] !== undefined && !isNonEmpty(item['evidence']))
+      problems.push(`${where}.evidence must be a non-empty string, or omitted`);
     return problems;
   }
-  if (!isNonEmpty(item['evidence'])) problems.push(`${where}.evidence is required for a ${String(verdict)} verdict (ADR-073 D4)`);
-  if (!isPlainRecord(evaluator)) problems.push(`${where}.evaluator is required for a ${String(verdict)} verdict`);
+  if (!isNonEmpty(item['evidence']))
+    problems.push(
+      `${where}.evidence is required for a ${String(verdict)} verdict (ADR-073 D4)`,
+    );
+  if (!isPlainRecord(evaluator))
+    problems.push(
+      `${where}.evaluator is required for a ${String(verdict)} verdict`,
+    );
   else {
-    problems.push(...unknownFields(evaluator, ['kind', 'identity', 'selfEvaluated'], `${where}.evaluator`));
-    if (!(EVALUATOR_KINDS as readonly unknown[]).includes(evaluator['kind'])) problems.push(`${where}.evaluator.kind must be one of ${EVALUATOR_KINDS.join(', ')}`);
-    if (!isNonEmpty(evaluator['identity'])) problems.push(`${where}.evaluator.identity must be a non-empty string`);
-    if (typeof evaluator['selfEvaluated'] !== 'boolean') problems.push(`${where}.evaluator.selfEvaluated must be a boolean`);
-    else if (evaluator['selfEvaluated'] && evaluator['kind'] !== 'model') problems.push(`${where}.evaluator.selfEvaluated is true only when kind is model (ADR-073 D3)`);
+    problems.push(
+      ...unknownFields(
+        evaluator,
+        ['kind', 'identity', 'selfEvaluated'],
+        `${where}.evaluator`,
+      ),
+    );
+    if (!(EVALUATOR_KINDS as readonly unknown[]).includes(evaluator['kind']))
+      problems.push(
+        `${where}.evaluator.kind must be one of ${EVALUATOR_KINDS.join(', ')}`,
+      );
+    if (!isNonEmpty(evaluator['identity']))
+      problems.push(`${where}.evaluator.identity must be a non-empty string`);
+    if (typeof evaluator['selfEvaluated'] !== 'boolean')
+      problems.push(`${where}.evaluator.selfEvaluated must be a boolean`);
+    else if (evaluator['selfEvaluated'] && evaluator['kind'] !== 'model')
+      problems.push(
+        `${where}.evaluator.selfEvaluated is true only when kind is model (ADR-073 D3)`,
+      );
   }
   return problems;
 }
@@ -290,41 +421,79 @@ export function validateIteration(input: unknown): readonly string[] {
   return validated(input, (value) => {
     if (!isPlainRecord(value)) return ['the iteration must be an object'];
     const problems = unknownFields(value, ITERATION_FIELDS, 'iteration');
-    if (value['schemaVersion'] !== INFERENCE_SCHEMA_VERSION) problems.push(`schemaVersion must be ${INFERENCE_SCHEMA_VERSION}`);
-    if (value['kind'] !== 'inference-run') problems.push("kind must be 'inference-run'");
-    if (!isContentId(value['contractRef'])) problems.push('contractRef must be a content id');
-    if (typeof value['runId'] !== 'string' || !UUID.test(value['runId'])) problems.push('runId must be a lower-case UUID');
-    if (!Number.isInteger(value['iteration']) || (value['iteration'] as number) < 1) problems.push('iteration must be a whole number >= 1');
-    if (value['outputRef'] !== undefined && !isContentId(value['outputRef'])) problems.push('outputRef must be a content id, or omitted');
-    if (typeof value['timestamp'] !== 'string' || !UTC.test(value['timestamp'])) problems.push('timestamp must be a UTC ISO-8601 timestamp ending in Z');
+    if (value['schemaVersion'] !== INFERENCE_SCHEMA_VERSION)
+      problems.push(`schemaVersion must be ${INFERENCE_SCHEMA_VERSION}`);
+    if (value['kind'] !== 'inference-run')
+      problems.push("kind must be 'inference-run'");
+    if (!isContentId(value['contractRef']))
+      problems.push('contractRef must be a content id');
+    if (typeof value['runId'] !== 'string' || !UUID.test(value['runId']))
+      problems.push('runId must be a lower-case UUID');
+    if (
+      !Number.isInteger(value['iteration']) ||
+      (value['iteration'] as number) < 1
+    )
+      problems.push('iteration must be a whole number >= 1');
+    if (value['outputRef'] !== undefined && !isContentId(value['outputRef']))
+      problems.push('outputRef must be a content id, or omitted');
+    if (typeof value['timestamp'] !== 'string' || !UTC.test(value['timestamp']))
+      problems.push('timestamp must be a UTC ISO-8601 timestamp ending in Z');
     problems.push(...withheldProblems(value['withheld'], 'iteration'));
-    if (!(ITERATION_DECISIONS as readonly unknown[]).includes(value['decision'])) problems.push(`decision must be one of ${ITERATION_DECISIONS.join(', ')}`);
-    if (!(DECISION_REASONS as readonly unknown[]).includes(value['reason'])) problems.push(`reason must be one of ${DECISION_REASONS.join(', ')}`);
+    if (
+      !(ITERATION_DECISIONS as readonly unknown[]).includes(value['decision'])
+    )
+      problems.push(
+        `decision must be one of ${ITERATION_DECISIONS.join(', ')}`,
+      );
+    if (!(DECISION_REASONS as readonly unknown[]).includes(value['reason']))
+      problems.push(`reason must be one of ${DECISION_REASONS.join(', ')}`);
     const evaluation = value['evaluation'];
     if (!Array.isArray(evaluation)) {
       problems.push('evaluation must be an array');
       return problems;
     }
-    const entryProblemsFound = evaluation.flatMap((item: unknown, index) => entryProblems(item, index));
+    const entryProblemsFound = evaluation.flatMap((item: unknown, index) =>
+      entryProblems(item, index),
+    );
     problems.push(...entryProblemsFound);
     if (entryProblemsFound.length > 0) return problems;
     const entries = evaluation as readonly EvaluationEntry[];
     const seen = new Set<string>();
     for (const entry of entries) {
-      if (seen.has(entry.requirementId)) problems.push(`duplicate requirementId ${entry.requirementId} in evaluation (ADR-073 D2)`);
+      if (seen.has(entry.requirementId))
+        problems.push(
+          `duplicate requirementId ${entry.requirementId} in evaluation (ADR-073 D2)`,
+        );
       seen.add(entry.requirementId);
     }
     const expected = decideIteration(entries);
     const summary = value['evaluationSummary'];
-    if (!isPlainRecord(summary) || summary['met'] !== expected.summary.met || summary['notMet'] !== expected.summary.notMet || summary['notEvaluated'] !== expected.summary.notEvaluated) {
+    if (
+      !isPlainRecord(summary) ||
+      summary['met'] !== expected.summary.met ||
+      summary['notMet'] !== expected.summary.notMet ||
+      summary['notEvaluated'] !== expected.summary.notEvaluated
+    ) {
       problems.push('evaluationSummary does not match the evaluation entries');
     }
-    if (value['partial'] !== expected.partial) problems.push('partial does not match the evaluation entries (true when any requirement is not-evaluated)');
-    if (value['decision'] !== expected.decision) problems.push(`decision must be ${expected.decision} for these entries (ADR-073 D5a)`);
-    if (value['reason'] !== expected.reason) problems.push(`reason must be ${expected.reason} for these entries`);
+    if (value['partial'] !== expected.partial)
+      problems.push(
+        'partial does not match the evaluation entries (true when any requirement is not-evaluated)',
+      );
+    if (value['decision'] !== expected.decision)
+      problems.push(
+        `decision must be ${expected.decision} for these entries (ADR-073 D5a)`,
+      );
+    if (value['reason'] !== expected.reason)
+      problems.push(`reason must be ${expected.reason} for these entries`);
     const confidence = value['confidence'];
-    if (JSON.stringify(confidence ?? null) !== JSON.stringify(expected.confidence ?? null)) {
-      problems.push('confidence must be the derived ratio and nothing else (ADR-073 D6), omitted when nothing was decided');
+    if (
+      JSON.stringify(confidence ?? null) !==
+      JSON.stringify(expected.confidence ?? null)
+    ) {
+      problems.push(
+        'confidence must be the derived ratio and nothing else (ADR-073 D6), omitted when nothing was decided',
+      );
     }
     return problems;
   });
@@ -363,9 +532,17 @@ export function completeRun(input: CompleteRunInput): CompletedRun {
   const { iteration } = input;
   const accepted = iteration?.decision === 'accepted' && classes.length === 0;
   const evidence = [...classes];
-  if (iteration !== undefined && classes.length === 0 && iteration.decision === 'rejected') {
+  if (
+    iteration !== undefined &&
+    classes.length === 0 &&
+    iteration.decision === 'rejected'
+  ) {
     if (iteration.reason === 'requirement-not-met') {
-      evidence.push(...iteration.evaluation.filter((entry) => entry.verdict === 'not-met').map((entry) => `not-met:${entry.requirementId}`));
+      evidence.push(
+        ...iteration.evaluation
+          .filter((entry) => entry.verdict === 'not-met')
+          .map((entry) => `not-met:${entry.requirementId}`),
+      );
     } else evidence.push(iteration.reason);
   }
   if (evidence.length === 0 && !accepted) {
@@ -377,14 +554,18 @@ export function completeRun(input: CompleteRunInput): CompletedRun {
     evidence,
     ...(iteration !== undefined ? { iterations: iteration.iteration } : {}),
     escalated: input.escalated,
-    ...(iteration?.confidence !== undefined ? { confidence: iteration.confidence } : {}),
+    ...(iteration?.confidence !== undefined
+      ? { confidence: iteration.confidence }
+      : {}),
   };
   const detail: InferenceRunDetail = {
     contractRef: input.contractRef,
     iterationRefs: input.iterationRef !== undefined ? [input.iterationRef] : [],
     iterationCeiling: input.iterationCeiling,
     finalDecision: accepted ? 'accepted' : 'rejected',
-    ...(input.escalatedTo !== undefined ? { escalatedTo: input.escalatedTo } : {}),
+    ...(input.escalatedTo !== undefined
+      ? { escalatedTo: input.escalatedTo }
+      : {}),
     contractComplete: input.contractComplete,
     ...(iteration !== undefined ? { partial: iteration.partial } : {}),
   };
