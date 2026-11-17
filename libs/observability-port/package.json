@@ -1,0 +1,9 @@
+{
+  "name": "@devx-micro/observability-port",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": { "mdast-util-from-markdown": "^2.1.0" }
+}

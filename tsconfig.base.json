@@ -7,13 +7,29 @@
     "moduleResolution": "bundler",
     "module": "esnext",
     "target": "es2022",
-    "lib": ["es2023"],
+    "lib": [
+      "es2023"
+    ],
     "strict": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "importHelpers": true,
     "skipLibCheck": true,
-    "paths": {}
+    "paths": {
+      "@devx-micro/observability-port": [
+        "./libs/observability-port/src/index.ts"
+      ],
+      "@devx-micro/cqrs-tool-runtime": [
+        "./libs/cqrs-tool-runtime/src/index.ts"
+      ],
+      "@devx-micro/cqrs-http-transport": [
+        "./libs/cqrs-http-transport/src/index.ts"
+      ]
+    }
   },
-  "exclude": ["node_modules", "dist", "tmp"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "tmp"
+  ]
 }

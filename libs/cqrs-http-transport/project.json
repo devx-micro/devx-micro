@@ -1,0 +1,45 @@
+{
+  "name": "cqrs-http-transport",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/cqrs-http-transport/src",
+  "projectType": "library",
+  "tags": [
+    "scope:shared",
+    "type:util"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:swc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "dist/libs/cqrs-http-transport",
+        "main": "libs/cqrs-http-transport/src/index.ts",
+        "tsConfig": "libs/cqrs-http-transport/tsconfig.lib.json"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "outputs": [
+        "{workspaceRoot}/coverage/{projectRoot}"
+      ],
+      "options": {
+        "command": "vitest run",
+        "cwd": "libs/cqrs-http-transport"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "commands": [
+          "tsc -p tsconfig.lib.json --noEmit",
+          "tsc -p tsconfig.spec.json --noEmit"
+        ],
+        "cwd": "libs/cqrs-http-transport",
+        "parallel": true
+      }
+    }
+  }
+}
