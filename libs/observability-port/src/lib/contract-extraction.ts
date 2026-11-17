@@ -1,11 +1,11 @@
 /**
  * Contract extraction — ADR-073 D2. Pure: step text in, role/goal/requirements/assumptions out.
  *
- * 🔴 **It mirrors the heading rules of the PromptOS facets in `libs/tooling/scm/domain/src/lib/promptos-conformance.ts`**
+ * 🔴 **It mirrors the heading rules of the PromptOS facets in `promptos-conformance.ts` (`libs/tooling/scm/domain` in the `lean-agile-os` repo, not migrated here)**
  * (`FACETS`: `goal`, `requirements`, `assumptions`), because ADR-073 D2 wants role, goal and requirements read through
  * the same facet parsing and this library (`scope:shared`) cannot import `scope:tooling`. The facets only detect
- * PRESENCE; this reads the content. Agreement with the facets is asserted by a spec in `scm-domain` over the real
- * step files, so the two cannot drift silently.
+ * PRESENCE; this reads the content. Upstream, agreement with the facets is asserted by a spec in `scm-domain` over the real
+ * step files; that spec is not present in this repo, so the two can drift until the facets are migrated.
  *
  * What counts as a requirement (in the order the facet tests them):
  *  - each bullet (or, with no bullets, each paragraph) under a `##+ Requirements|Acceptance|Non-negotiables|Rules|
