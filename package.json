@@ -50,5 +50,10 @@
     "mdast-util-from-markdown": "^2.1.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
+  },
+  "allowScripts": {
+    "@swc/core@1.16.22": true,
+    "esbuild@0.28.2": true,
+    "nx@24.0.6": true
   }
 }
