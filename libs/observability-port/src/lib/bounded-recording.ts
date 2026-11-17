@@ -80,7 +80,10 @@ export class BoundedRecording {
       this.pausedFrom = from;
       this.pausedUntil = from + cooldown;
       // Silence would look like "nothing happened", so say once that observations are being skipped.
-      if (!alreadyOpen) process.stderr.write(`${this.options.label}: the recorder exceeded its bound; not recording for ${cooldown} ms\n`);
+      if (!alreadyOpen)
+        process.stderr.write(
+          `${this.options.label}: the recorder exceeded its bound; not recording for ${cooldown} ms\n`,
+        );
     } catch {
       // Reporting must not itself become a failure.
     }

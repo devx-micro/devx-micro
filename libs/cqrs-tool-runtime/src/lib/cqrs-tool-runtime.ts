@@ -2,7 +2,14 @@ import type { SessionBoardPort } from './session-board';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
-import { BoundedRecording, startTiming, wellFormed, type Clock, type ObservationInput, type Recorder } from '@devx-micro/observability-port';
+import {
+  BoundedRecording,
+  startTiming,
+  wellFormed,
+  type Clock,
+  type ObservationInput,
+  type Recorder,
+} from '@devx-micro/observability-port';
 
 import {
   TOOL_ENVELOPE_VERSION,
@@ -266,7 +273,8 @@ export class CqrsToolRuntime {
     const recorder = this.options.recorder;
     const operation = this.operations.get(operationName);
     // An unknown name is the caller's text, not a registered operation, so it is not recorded.
-    if (!recorder || !operation || this.boundedRecording.isPaused()) return this.run(operationName, rawInput, correlationId);
+    if (!recorder || !operation || this.boundedRecording.isPaused())
+      return this.run(operationName, rawInput, correlationId);
     // Snapshot the names before the handler runs: a handler that mutates its input must not change what the caller sent.
     let names: string[];
     try {
@@ -275,14 +283,23 @@ export class CqrsToolRuntime {
       names = []; // an exotic input (a throwing proxy) must not change the result
     }
 
-    let timing: { finish(): ReturnType<ReturnType<typeof startTiming>['finish']> } | undefined;
+    let timing:
+      | { finish(): ReturnType<ReturnType<typeof startTiming>['finish']> }
+      | undefined;
     try {
       timing = startTiming(this.options.clock);
     } catch {
       timing = undefined;
     }
     const envelope = await this.run(operationName, rawInput, correlationId);
-    await this.observe(recorder, operation, names, correlationId, envelope, timing);
+    await this.observe(
+      recorder,
+      operation,
+      names,
+      correlationId,
+      envelope,
+      timing,
+    );
     return envelope;
   }
 
@@ -300,11 +317,20 @@ export class CqrsToolRuntime {
     names: string[],
     correlationId: string,
     envelope: ToolEnvelope,
-    timing: { finish(): { beforeTimestamp: string; afterTimestamp: string; durationMs?: number } } | undefined,
+    timing:
+      | {
+          finish(): {
+            beforeTimestamp: string;
+            afterTimestamp: string;
+            durationMs?: number;
+          };
+        }
+      | undefined,
   ): Promise<void> {
     try {
       // The handler already wrote the one completion (ADR-072 D4a); a second, generic one would be a double count.
-      if (operation.recordsItself === true && envelope.status === 'success') return;
+      if (operation.recordsItself === true && envelope.status === 'success')
+        return;
       const measured = timing?.finish();
       const observation: ObservationInput = {
         kind: operation.observationKind ?? 'operation',
@@ -312,16 +338,24 @@ export class CqrsToolRuntime {
         operation: operation.name,
         beforeTimestamp: measured?.beforeTimestamp ?? new Date().toISOString(),
         afterTimestamp: measured?.afterTimestamp ?? new Date().toISOString(),
-        ...(measured?.durationMs !== undefined ? { durationMs: measured.durationMs } : {}),
+        ...(measured?.durationMs !== undefined
+          ? { durationMs: measured.durationMs }
+          : {}),
         detail: (() => {
           // Bounded, because the names come from the caller: at most 32, each cut to 64 characters, with the true count.
           return {
             // The correlation id is caller text on HTTP, so it is made well-formed and bounded too (an oversized id would push the
             // whole detail, key names included, over the payload cap).
-            correlationId: Array.from(wellFormed(correlationId)).slice(0, 128).join(''),
+            correlationId: Array.from(wellFormed(correlationId))
+              .slice(0, 128)
+              .join(''),
             // Well-formed first (a name that arrives as a lone surrogate would make the record unhashable and silently
             // suppress the caller's own observation), then cut by code point so the cut cannot split a surrogate pair.
-            inputKeys: names.slice(0, 32).map((name) => Array.from(wellFormed(name)).slice(0, 64).join('')),
+            inputKeys: names
+              .slice(0, 32)
+              .map((name) =>
+                Array.from(wellFormed(name)).slice(0, 64).join(''),
+              ),
             inputKeyCount: names.length,
           };
         })(),
@@ -330,7 +364,12 @@ export class CqrsToolRuntime {
             ? { outcome: 'success', evidence: [] }
             : envelope.status === 'incomplete'
               ? { outcome: 'blocked', evidence: ['incomplete-run'] }
-              : { outcome: 'failure', evidence: [wellFormed(envelope.error?.code ?? 'HANDLER_FAILURE')] },
+              : {
+                  outcome: 'failure',
+                  evidence: [
+                    wellFormed(envelope.error?.code ?? 'HANDLER_FAILURE'),
+                  ],
+                },
       };
       await this.boundedRecording.run(() => recorder.record(observation));
     } catch {

@@ -26,7 +26,10 @@ const CONTENT_ID = /^1-[0-9a-f]{32}$/;
 const ANY_GENERATION = /^(\d+)-([0-9a-f]{32})$/;
 
 export function contentIdOfBytes(bytes: Uint8Array): ContentId {
-  const digest = createHash('sha256').update(bytes).digest('hex').slice(0, DIGEST_LENGTH);
+  const digest = createHash('sha256')
+    .update(bytes)
+    .digest('hex')
+    .slice(0, DIGEST_LENGTH);
   return `1-${digest}`;
 }
 
@@ -43,11 +46,19 @@ export function isContentId(value: unknown): value is ContentId {
   return typeof value === 'string' && CONTENT_ID.test(value);
 }
 
-export function parseContentId(id: string): { readonly generation: 1; readonly digest: string } {
+export function parseContentId(id: string): {
+  readonly generation: 1;
+  readonly digest: string;
+} {
   const match = ANY_GENERATION.exec(id);
-  if (!match) throw new Error(`Malformed content id, expected 1-<32 lowercase hex>: ${id}`);
+  if (!match)
+    throw new Error(
+      `Malformed content id, expected 1-<32 lowercase hex>: ${id}`,
+    );
   if (match[1] !== '1') {
-    throw new Error(`Unsupported content id generation ${match[1]}: only generation 1 exists (ADR-072 D3)`);
+    throw new Error(
+      `Unsupported content id generation ${match[1]}: only generation 1 exists (ADR-072 D3)`,
+    );
   }
   return { generation: 1, digest: match[2] };
 }
@@ -57,7 +68,13 @@ export type ContentIdVerification =
   | { readonly ok: false; readonly reason: 'malformed' | 'digest-mismatch' };
 
 /** Compare a stored id with the id recomputed from the stored content. */
-export function verifyContentId(stored: string, recomputed: string): ContentIdVerification {
-  if (!isContentId(stored) || !isContentId(recomputed)) return { ok: false, reason: 'malformed' };
-  return stored === recomputed ? { ok: true } : { ok: false, reason: 'digest-mismatch' };
+export function verifyContentId(
+  stored: string,
+  recomputed: string,
+): ContentIdVerification {
+  if (!isContentId(stored) || !isContentId(recomputed))
+    return { ok: false, reason: 'malformed' };
+  return stored === recomputed
+    ? { ok: true }
+    : { ok: false, reason: 'digest-mismatch' };
 }

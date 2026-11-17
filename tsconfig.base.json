@@ -7,9 +7,7 @@
     "moduleResolution": "bundler",
     "module": "esnext",
     "target": "es2022",
-    "lib": [
-      "es2023"
-    ],
+    "lib": ["es2023"],
     "strict": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
@@ -27,9 +25,5 @@
       ]
     }
   },
-  "exclude": [
-    "node_modules",
-    "dist",
-    "tmp"
-  ]
+  "exclude": ["node_modules", "dist", "tmp"]
 }

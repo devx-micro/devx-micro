@@ -34,7 +34,10 @@ export interface ExtractedContract {
   readonly goal?: string;
   /** In order of first appearance, with a repeated `requirementId` kept once. */
   readonly requirements: readonly ExtractedRequirement[];
-  readonly assumptions: readonly { readonly text: string; readonly origin: 'declared' }[];
+  readonly assumptions: readonly {
+    readonly text: string;
+    readonly origin: 'declared';
+  }[];
   /** The `requirementId`s that appeared more than once. */
   readonly duplicates: readonly ContentId[];
   /** ADR-073 D8: false for a step with no requirements, and for a duplicate (D2). */
@@ -50,10 +53,13 @@ const MAX_LINE_CHARS = 20_000;
 
 // Mirrors of the FACETS patterns, with the quantifiers bounded.
 const HEADING = /^(#{1,6})/;
-const REQUIREMENTS_HEADING = /^#{2,6}[ \t]{0,10}(?:Requirements|Acceptance|Non-negotiables|Rules|Output Integrity Rules|Do not skip|Core Principles|Constraints)\b/i;
-const GOAL_HEADING = /^#{2,6}[ \t]{0,10}(?:Goal|Mission|Purpose|Objective|Summary|Role and Identity|What this)\b/i;
+const REQUIREMENTS_HEADING =
+  /^#{2,6}[ \t]{0,10}(?:Requirements|Acceptance|Non-negotiables|Rules|Output Integrity Rules|Do not skip|Core Principles|Constraints)\b/i;
+const GOAL_HEADING =
+  /^#{2,6}[ \t]{0,10}(?:Goal|Mission|Purpose|Objective|Summary|Role and Identity|What this)\b/i;
 const GOAL_LINE = /^(?:Goal|Mission|Purpose):[ \t]{0,10}(\S.{0,2000})$/i;
-const STEP_TITLE = /^#[ \t]{1,10}`[^`\n]{1,200}`[ \t]{1,10}—[ \t]{1,10}(\S.{0,2000})$/;
+const STEP_TITLE =
+  /^#[ \t]{1,10}`[^`\n]{1,200}`[ \t]{1,10}—[ \t]{1,10}(\S.{0,2000})$/;
 const ASSUMPTIONS_HEADING = /^#{2,6}[ \t]{0,10}Assumptions\b/i;
 const CALLOUT = /^[ \t]{0,6}(?:🔴|⚠️)[ \t]{0,6}\*\*/;
 /** A thematic break: three or more of one of `-` `*` `_`, only spaces and tabs between. It separates; it is never an item. */
@@ -77,7 +83,11 @@ function containerDepth(line: string): number {
   // A thematic break (`* * *`, `- - -`: three or more of one of - * _, spaces and tabs between) opens no container. Its
   // run is the line's trailing run of one marker character, found once from the end so the scan stays linear.
   let end = n;
-  while (end > 0 && (line.charAt(end - 1) === ' ' || line.charAt(end - 1) === '\t')) end -= 1;
+  while (
+    end > 0 &&
+    (line.charAt(end - 1) === ' ' || line.charAt(end - 1) === '\t')
+  )
+    end -= 1;
   const rule = end > 0 ? line.charAt(end - 1) : '';
   let ruleStart = n;
   let ruleCount = 0;
@@ -98,14 +108,27 @@ function containerDepth(line: string): number {
       i += 1;
     } else if (c === rule && i >= ruleStart && ruleCount >= 3) {
       return depth; // the rest of the line is a thematic break
-    } else if ((c === '-' || c === '*' || c === '+') && (i + 1 >= n || line.charAt(i + 1) === ' ' || line.charAt(i + 1) === '\t')) {
+    } else if (
+      (c === '-' || c === '*' || c === '+') &&
+      (i + 1 >= n || line.charAt(i + 1) === ' ' || line.charAt(i + 1) === '\t')
+    ) {
       depth += 1;
       i += 1;
     } else if (c >= '0' && c <= '9') {
       let j = i;
-      while (j < n && j - i < 10 && line.charAt(j) >= '0' && line.charAt(j) <= '9') j += 1;
+      while (
+        j < n &&
+        j - i < 10 &&
+        line.charAt(j) >= '0' &&
+        line.charAt(j) <= '9'
+      )
+        j += 1;
       const d = line.charAt(j);
-      if ((d !== '.' && d !== ')') || (j + 1 < n && line.charAt(j + 1) !== ' ' && line.charAt(j + 1) !== '\t')) break;
+      if (
+        (d !== '.' && d !== ')') ||
+        (j + 1 < n && line.charAt(j + 1) !== ' ' && line.charAt(j + 1) !== '\t')
+      )
+        break;
       depth += 1;
       i = j + 1;
     } else break;
@@ -115,9 +138,15 @@ function containerDepth(line: string): number {
 }
 
 /** Why a document is not handed to the parser, or `undefined` when it is safe to. */
-function unparseableReason(text: string, lines: readonly string[]): string | undefined {
-  if (text.length > MAX_PARSE_CHARS) return `document too large to parse (more than ${MAX_PARSE_CHARS} characters)`;
-  for (const line of lines) if (containerDepth(line) > MAX_CONTAINER_DEPTH) return `document nested too deeply to parse (more than ${MAX_CONTAINER_DEPTH} block-quote or list markers on a line)`;
+function unparseableReason(
+  text: string,
+  lines: readonly string[],
+): string | undefined {
+  if (text.length > MAX_PARSE_CHARS)
+    return `document too large to parse (more than ${MAX_PARSE_CHARS} characters)`;
+  for (const line of lines)
+    if (containerDepth(line) > MAX_CONTAINER_DEPTH)
+      return `document nested too deeply to parse (more than ${MAX_CONTAINER_DEPTH} block-quote or list markers on a line)`;
   return undefined;
 }
 
@@ -129,11 +158,29 @@ function unparseableReason(text: string, lines: readonly string[]): string | und
  */
 const BLOCK_ONLY = {
   disable: {
-    null: ['attention', 'autolink', 'characterEscape', 'characterReference', 'codeText', 'hardBreakEscape', 'htmlText', 'labelEnd', 'labelStartImage', 'labelStartLink'],
+    null: [
+      'attention',
+      'autolink',
+      'characterEscape',
+      'characterReference',
+      'codeText',
+      'hardBreakEscape',
+      'htmlText',
+      'labelEnd',
+      'labelStartImage',
+      'labelStartLink',
+    ],
   },
 };
 
-type MdNode = { readonly type: string; readonly position?: { readonly start: { readonly line: number }; readonly end: { readonly line: number } }; readonly children?: readonly MdNode[] };
+type MdNode = {
+  readonly type: string;
+  readonly position?: {
+    readonly start: { readonly line: number };
+    readonly end: { readonly line: number };
+  };
+  readonly children?: readonly MdNode[];
+};
 
 /**
  * Lines with every code block (fenced AND indented) blanked to an empty line, so positions are stable. What is a code block
@@ -141,32 +188,49 @@ type MdNode = { readonly type: string; readonly position?: { readonly start: { r
  * is unparseable (see `unparseableReason`); `reason` receives why. Never throws.
  * @internal exported for the oracle-agreement spec.
  */
-export function blankCodeBlocks(text: string, reason?: (why: string) => void): string[] | undefined {
-  const lines = text.split(/\r\n?|\n/).map((raw) => (raw.length > MAX_LINE_CHARS ? raw.slice(0, MAX_LINE_CHARS) : raw));
+export function blankCodeBlocks(
+  text: string,
+  reason?: (why: string) => void,
+): string[] | undefined {
+  const lines = text
+    .split(/\r\n?|\n/)
+    .map((raw) =>
+      raw.length > MAX_LINE_CHARS ? raw.slice(0, MAX_LINE_CHARS) : raw,
+    );
   const why = unparseableReason(text, lines);
   if (why !== undefined) {
     reason?.(why);
     return undefined;
   }
   try {
-    const tree = fromMarkdown(lines.join('\n'), { extensions: [BLOCK_ONLY] }) as unknown as MdNode;
+    const tree = fromMarkdown(lines.join('\n'), {
+      extensions: [BLOCK_ONLY],
+    }) as unknown as MdNode;
     const stack: MdNode[] = [tree]; // iterative: a deeply nested tree must not cost stack depth
     for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
       if (node.type === 'code' && node.position) {
         const to = Math.min(node.position.end.line, lines.length);
-        for (let line = Math.max(node.position.start.line, 1); line <= to; line += 1) lines[line - 1] = '';
+        for (
+          let line = Math.max(node.position.start.line, 1);
+          line <= to;
+          line += 1
+        )
+          lines[line - 1] = '';
       } else if (node.children) {
         for (const child of node.children) stack.push(child);
       }
     }
     return lines;
   } catch (error) {
-    reason?.(`document could not be parsed (${error instanceof Error ? error.constructor.name : 'error'})`);
+    reason?.(
+      `document could not be parsed (${error instanceof Error ? error.constructor.name : 'error'})`,
+    );
     return undefined;
   }
 }
 
-const levelOf = (line: string): number => (HEADING.exec(line)?.[1] ?? '').length;
+const levelOf = (line: string): number =>
+  (HEADING.exec(line)?.[1] ?? '').length;
 const isBlank = (line: string): boolean => line.trim() === '';
 
 /** The half-open range of lines after `start` up to the next heading of the same or a higher level. */
@@ -179,10 +243,16 @@ function sectionEnd(lines: readonly string[], start: number): number {
   return lines.length;
 }
 
-const clean = (text: string): string => Array.from(wellFormed(text.trim())).slice(0, MAX_ITEM_CHARS).join('');
+const clean = (text: string): string =>
+  Array.from(wellFormed(text.trim())).slice(0, MAX_ITEM_CHARS).join('');
 
 /** Items of a section: bullets with their indented continuation lines, else blank-separated paragraphs. Reports consumed line indexes. */
-function sectionItems(lines: readonly string[], from: number, to: number, consumed: Set<number>): string[] {
+function sectionItems(
+  lines: readonly string[],
+  from: number,
+  to: number,
+  consumed: Set<number>,
+): string[] {
   const bullets: string[] = [];
   const paragraphs: string[] = [];
   let bullet: string[] | undefined;
@@ -228,7 +298,11 @@ function sectionItems(lines: readonly string[], from: number, to: number, consum
   return bullets.length > 0 ? bullets : paragraphs;
 }
 
-function firstParagraph(lines: readonly string[], from: number, to: number): string | undefined {
+function firstParagraph(
+  lines: readonly string[],
+  from: number,
+  to: number,
+): string | undefined {
   const collected: string[] = [];
   for (let i = from; i < to; i += 1) {
     const line = lines[i] ?? '';
@@ -242,17 +316,31 @@ function firstParagraph(lines: readonly string[], from: number, to: number): str
   return collected.length > 0 ? clean(collected.join('\n')) : undefined;
 }
 
-export function extractContract(text: string, options: { readonly role?: string } = {}): ExtractedContract {
+export function extractContract(
+  text: string,
+  options: { readonly role?: string } = {},
+): ExtractedContract {
   let reason: string | undefined;
   const lines = blankCodeBlocks(text, (why) => (reason = why));
   const role = options.role !== undefined ? { role: options.role } : {};
   // Unparseable is not "no requirements found": it says so, and the contract is incomplete (D8). Never a throw.
-  if (lines === undefined) return { ...role, requirements: [], assumptions: [], duplicates: [], contractComplete: false, incompleteReason: reason ?? 'document could not be parsed' };
+  if (lines === undefined)
+    return {
+      ...role,
+      requirements: [],
+      assumptions: [],
+      duplicates: [],
+      contractComplete: false,
+      incompleteReason: reason ?? 'document could not be parsed',
+    };
   return extractFromLines(lines, options);
 }
 
 /** The extraction proper, over lines whose code blocks are already blanked. @internal exported so a spec can drive it past the parse cap. */
-export function extractFromLines(lines: readonly string[], options: { readonly role?: string } = {}): ExtractedContract {
+export function extractFromLines(
+  lines: readonly string[],
+  options: { readonly role?: string } = {},
+): ExtractedContract {
   const consumed = new Set<number>();
   const raw: string[] = [];
   const assumptions: { text: string; origin: 'declared' }[] = [];
@@ -263,10 +351,22 @@ export function extractFromLines(lines: readonly string[], options: { readonly r
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i] ?? '';
     if (REQUIREMENTS_HEADING.test(line)) {
-      for (const item of sectionItems(lines, i + 1, sectionEnd(lines, i), consumed)) raw.push(item); // not push(...spread): a huge section overflows the stack
+      for (const item of sectionItems(
+        lines,
+        i + 1,
+        sectionEnd(lines, i),
+        consumed,
+      ))
+        raw.push(item); // not push(...spread): a huge section overflows the stack
     } else if (ASSUMPTIONS_HEADING.test(line)) {
-      for (const item of sectionItems(lines, i + 1, sectionEnd(lines, i), new Set())) {
-        if (assumptions.length < MAX_ASSUMPTIONS && clean(item) !== '') assumptions.push({ text: clean(item), origin: 'declared' });
+      for (const item of sectionItems(
+        lines,
+        i + 1,
+        sectionEnd(lines, i),
+        new Set(),
+      )) {
+        if (assumptions.length < MAX_ASSUMPTIONS && clean(item) !== '')
+          assumptions.push({ text: clean(item), origin: 'declared' });
       }
     } else if (GOAL_HEADING.test(line)) {
       headingGoal ??= firstParagraph(lines, i + 1, sectionEnd(lines, i));
@@ -282,7 +382,11 @@ export function extractFromLines(lines: readonly string[], options: { readonly r
     if (consumed.has(i) || !CALLOUT.test(lines[i] ?? '')) continue;
     const paragraph: string[] = [];
     let j = i;
-    while (j < lines.length && !isBlank(lines[j] ?? '') && !HEADING.test(lines[j] ?? '')) {
+    while (
+      j < lines.length &&
+      !isBlank(lines[j] ?? '') &&
+      !HEADING.test(lines[j] ?? '')
+    ) {
       paragraph.push((lines[j] ?? '').trim());
       consumed.add(j);
       j += 1;
@@ -307,7 +411,8 @@ export function extractFromLines(lines: readonly string[], options: { readonly r
       continue;
     }
     seen.add(id);
-    if (requirements.length < MAX_REQUIREMENTS) requirements.push({ requirementId: id, text: body });
+    if (requirements.length < MAX_REQUIREMENTS)
+      requirements.push({ requirementId: id, text: body });
   }
   const goal = headingGoal ?? lineGoal ?? titleGoal;
   return {

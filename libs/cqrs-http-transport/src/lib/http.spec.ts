@@ -58,7 +58,11 @@ describe('unwrap', () => {
         envelope({
           status: 'error',
           exitCode: TOOL_EXIT_CODES.usage,
-          error: { code: 'INVALID_INPUT', message: 'needs a title', details: { missing: ['title'] } },
+          error: {
+            code: 'INVALID_INPUT',
+            message: 'needs a title',
+            details: { missing: ['title'] },
+          },
         }),
       ),
     );
@@ -80,7 +84,10 @@ describe('unwrap', () => {
           status: 'error',
           kind: 'system',
           exitCode: TOOL_EXIT_CODES.usage,
-          error: { code: 'UNKNOWN_OPERATION', message: "Unknown operation 'x.op'" },
+          error: {
+            code: 'UNKNOWN_OPERATION',
+            message: "Unknown operation 'x.op'",
+          },
         }),
       ),
     );
@@ -92,9 +99,18 @@ describe('unwrap', () => {
   // 🔴 Neither success nor error: the payload names the step it stopped at, and a caller resumes
   // from it. Falling into the error branch would throw a 409 with an undefined code and no data.
   it('throws an incomplete sequence as 409 INCOMPLETE with its data, never as success or as a bare error', () => {
-    const data = { stoppedAt: 'exit-gate', steps: [{ step: 'commit', outcome: 'done' }] };
+    const data = {
+      stoppedAt: 'exit-gate',
+      steps: [{ step: 'commit', outcome: 'done' }],
+    };
     const error = thrown(() =>
-      unwrap(envelope({ status: 'incomplete', exitCode: TOOL_EXIT_CODES.blocked, data })),
+      unwrap(
+        envelope({
+          status: 'incomplete',
+          exitCode: TOOL_EXIT_CODES.blocked,
+          data,
+        }),
+      ),
     );
 
     expect(error.getStatus()).toBe(409);

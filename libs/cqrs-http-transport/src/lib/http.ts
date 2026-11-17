@@ -1,6 +1,9 @@
 import { HttpException } from '@nestjs/common';
 
-import { TOOL_EXIT_CODES, type ToolEnvelope } from '@devx-micro/cqrs-tool-runtime';
+import {
+  TOOL_EXIT_CODES,
+  type ToolEnvelope,
+} from '@devx-micro/cqrs-tool-runtime';
 
 /**
  * The HTTP half of the transport contract: an envelope, as a response or a thrown status.

@@ -27,11 +27,16 @@ export interface Recorder {
    * when nothing was stored (the no-op recorder). A failure to record must never change the observed
    * unit's own result (ADR-072 D7): implementations report it through telemetry and resolve.
    */
-  record(observation: ObservationInput, options?: RecordOptions): Promise<ContentId | undefined>;
+  record(
+    observation: ObservationInput,
+    options?: RecordOptions,
+  ): Promise<ContentId | undefined>;
 }
 
 /** What storing an input, output or contract artifact answers: its content id, or why it was withheld (ADR-072 D9). */
-export type StoredArtifact = { readonly ref: ContentId } | { readonly withheld: string };
+export type StoredArtifact =
+  | { readonly ref: ContentId }
+  | { readonly withheld: string };
 
 /**
  * The inference seam's extra needs (ADR-073): artifacts stored by content id, the contract, and one event per
@@ -47,7 +52,9 @@ export interface InferenceRecorder extends Recorder {
   recordIteration(iteration: IterationRecord): Promise<ContentId | undefined>;
 }
 
-export function isInferenceRecorder(recorder: Recorder | undefined): recorder is InferenceRecorder {
+export function isInferenceRecorder(
+  recorder: Recorder | undefined,
+): recorder is InferenceRecorder {
   const candidate = recorder as Partial<InferenceRecorder> | undefined;
   return (
     candidate !== undefined &&
@@ -97,7 +104,10 @@ export function startTiming(clock: Clock = systemClock): { finish(): Timing } {
     finish: () => {
       const afterTimestamp = clock.nowIso();
       const reading: unknown = clock.monotonicMs();
-      const elapsed = typeof reading === 'number' && typeof startedAt === 'number' ? reading - startedAt : Number.NaN;
+      const elapsed =
+        typeof reading === 'number' && typeof startedAt === 'number'
+          ? reading - startedAt
+          : Number.NaN;
       return Number.isFinite(elapsed) && elapsed >= 0
         ? { beforeTimestamp, afterTimestamp, durationMs: elapsed }
         : { beforeTimestamp, afterTimestamp };

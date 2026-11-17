@@ -25,10 +25,14 @@ function assertWellFormed(text: string, what: string): void {
         index++;
         continue;
       }
-      throw new Error(`${what} contains a lone surrogate, which has no well-formed UTF-8`);
+      throw new Error(
+        `${what} contains a lone surrogate, which has no well-formed UTF-8`,
+      );
     }
     if (unit >= 0xdc00 && unit <= 0xdfff) {
-      throw new Error(`${what} contains a lone surrogate, which has no well-formed UTF-8`);
+      throw new Error(
+        `${what} contains a lone surrogate, which has no well-formed UTF-8`,
+      );
     }
   }
 }
@@ -39,7 +43,10 @@ function assertWellFormed(text: string, what: string): void {
  * caller's own observation. (`String.prototype.toWellFormed` does this, but the repo's TypeScript lib predates it.)
  */
 export function wellFormed(text: string): string {
-  return text.replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, '\ufffd');
+  return text.replace(
+    /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g,
+    '\ufffd',
+  );
 }
 
 /** Throws unless `text` is well-formed Unicode. Exported for the content-id functions. */
@@ -70,20 +77,33 @@ function serialize(value: unknown, stack: object[]): string {
     case 'object':
       break;
     default:
-      throw new Error(`A value of type ${typeof value} cannot be represented in JSON`);
+      throw new Error(
+        `A value of type ${typeof value} cannot be represented in JSON`,
+      );
   }
   const object = value as object;
-  if (stack.includes(object)) throw new Error('A cycle cannot be represented in JSON');
-  if (stack.length >= MAX_DEPTH) throw new Error(`Values nested deeper than ${MAX_DEPTH} levels are refused`);
+  if (stack.includes(object))
+    throw new Error('A cycle cannot be represented in JSON');
+  if (stack.length >= MAX_DEPTH)
+    throw new Error(
+      `Values nested deeper than ${MAX_DEPTH} levels are refused`,
+    );
   stack.push(object);
   try {
     if (Array.isArray(object)) {
       if (Object.getOwnPropertySymbols(object).length > 0) {
-        throw new Error('An array with a symbol key cannot be represented in JSON');
+        throw new Error(
+          'An array with a symbol key cannot be represented in JSON',
+        );
       }
       // `length` is the one own, non-enumerable property an array always has.
-      if (Object.getOwnPropertyNames(object).length !== Object.keys(object).length + 1) {
-        throw new Error('An array with a non-index property cannot be represented in JSON');
+      if (
+        Object.getOwnPropertyNames(object).length !==
+        Object.keys(object).length + 1
+      ) {
+        throw new Error(
+          'An array with a non-index property cannot be represented in JSON',
+        );
       }
       if (Object.keys(object).length !== object.length) {
         throw new Error(
@@ -94,22 +114,32 @@ function serialize(value: unknown, stack: object[]): string {
       }
       const items: string[] = [];
       for (let index = 0; index < object.length; index++) {
-        if (!(index in object)) throw new Error(`The array has a hole at index ${index}`);
+        if (!(index in object))
+          throw new Error(`The array has a hole at index ${index}`);
         const item: unknown = object[index];
-        if (item === undefined) throw new Error(`undefined at index ${index} of an array`);
+        if (item === undefined)
+          throw new Error(`undefined at index ${index} of an array`);
         items.push(serialize(item, stack));
       }
       return `[${items.join(',')}]`;
     }
     if (!isPlainObject(object)) {
-      throw new Error('Only plain objects, arrays and JSON scalars are canonicalised');
+      throw new Error(
+        'Only plain objects, arrays and JSON scalars are canonicalised',
+      );
     }
     const record = object as Record<string, unknown>;
     if (Object.getOwnPropertySymbols(record).length > 0) {
-      throw new Error('An object with a symbol key cannot be represented in JSON');
+      throw new Error(
+        'An object with a symbol key cannot be represented in JSON',
+      );
     }
-    if (Object.getOwnPropertyNames(record).length !== Object.keys(record).length) {
-      throw new Error('An object with a non-enumerable property cannot be represented in JSON');
+    if (
+      Object.getOwnPropertyNames(record).length !== Object.keys(record).length
+    ) {
+      throw new Error(
+        'An object with a non-enumerable property cannot be represented in JSON',
+      );
     }
     const members = Object.keys(record)
       .filter((key) => record[key] !== undefined)

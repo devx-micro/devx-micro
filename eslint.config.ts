@@ -19,12 +19,22 @@ export default [
           allow: ['^.*/eslint(\\.base)?\\.config\\.[cm]?[jt]s$'],
           depConstraints: [
             // Scope tags: cross-bounded-context isolation
-            { sourceTag: 'scope:shared', onlyDependOnLibsWithTags: ['scope:shared'] },
+            {
+              sourceTag: 'scope:shared',
+              onlyDependOnLibsWithTags: ['scope:shared'],
+            },
             // Type tags: layer isolation (dependency rule — inward only)
-            { sourceTag: 'type:domain', onlyDependOnLibsWithTags: ['type:domain', 'type:util'] },
+            {
+              sourceTag: 'type:domain',
+              onlyDependOnLibsWithTags: ['type:domain', 'type:util'],
+            },
             {
               sourceTag: 'type:application',
-              onlyDependOnLibsWithTags: ['type:domain', 'type:application', 'type:util'],
+              onlyDependOnLibsWithTags: [
+                'type:domain',
+                'type:application',
+                'type:util',
+              ],
             },
             {
               sourceTag: 'type:infrastructure',
@@ -45,7 +55,10 @@ export default [
                 'type:util',
               ],
             },
-            { sourceTag: 'type:ui', onlyDependOnLibsWithTags: ['type:ui', 'type:util'] },
+            {
+              sourceTag: 'type:ui',
+              onlyDependOnLibsWithTags: ['type:ui', 'type:util'],
+            },
             { sourceTag: 'type:util', onlyDependOnLibsWithTags: ['type:util'] },
             { sourceTag: 'type:app', onlyDependOnLibsWithTags: ['*'] },
           ],
