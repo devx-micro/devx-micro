@@ -11,7 +11,14 @@
       "options": {
         "outputPath": "dist/libs/observability-port",
         "main": "libs/observability-port/src/index.ts",
-        "tsConfig": "libs/observability-port/tsconfig.lib.json"
+        "tsConfig": "libs/observability-port/tsconfig.lib.json",
+        "assets": [
+          {
+            "input": "{workspaceRoot}",
+            "glob": "LICENSE",
+            "output": "."
+          }
+        ]
       }
     },
     "test": {

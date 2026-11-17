@@ -11,7 +11,14 @@
       "options": {
         "outputPath": "dist/libs/cqrs-http-transport",
         "main": "libs/cqrs-http-transport/src/index.ts",
-        "tsConfig": "libs/cqrs-http-transport/tsconfig.lib.json"
+        "tsConfig": "libs/cqrs-http-transport/tsconfig.lib.json",
+        "assets": [
+          {
+            "input": "{workspaceRoot}",
+            "glob": "LICENSE",
+            "output": "."
+          }
+        ]
       }
     },
     "test": {
