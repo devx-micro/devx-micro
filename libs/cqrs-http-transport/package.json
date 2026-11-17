@@ -1,0 +1,12 @@
+{
+  "name": "@devx-micro/cqrs-http-transport",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "@devx-micro/cqrs-tool-runtime": "0.1.0",
+    "@nestjs/common": "^11.0.0"
+  }
+}
