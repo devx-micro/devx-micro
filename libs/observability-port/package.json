@@ -1,12 +1,24 @@
 {
   "name": "@devx-micro/observability-port",
   "version": "0.1.0",
-  "private": true,
   "type": "commonjs",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
     "mdast-util-from-markdown": "^2.1.0"
   },
-  "license": "MPL-2.0"
+  "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/devx-micro/devx-micro.git",
+    "directory": "libs/observability-port"
+  },
+  "bugs": {
+    "url": "https://github.com/devx-micro/devx-micro/issues"
+  },
+  "homepage": "https://github.com/devx-micro/devx-micro/tree/main/libs/observability-port#readme",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

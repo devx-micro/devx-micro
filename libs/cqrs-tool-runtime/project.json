@@ -11,7 +11,14 @@
       "options": {
         "outputPath": "dist/libs/cqrs-tool-runtime",
         "main": "libs/cqrs-tool-runtime/src/index.ts",
-        "tsConfig": "libs/cqrs-tool-runtime/tsconfig.lib.json"
+        "tsConfig": "libs/cqrs-tool-runtime/tsconfig.lib.json",
+        "assets": [
+          {
+            "input": "{workspaceRoot}",
+            "glob": "LICENSE",
+            "output": "."
+          }
+        ]
       }
     },
     "test": {
