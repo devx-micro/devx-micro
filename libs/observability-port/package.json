@@ -7,5 +7,6 @@
   "types": "./src/index.d.ts",
   "dependencies": {
     "mdast-util-from-markdown": "^2.1.0"
-  }
+  },
+  "license": "MPL-2.0"
 }

@@ -2,9 +2,8 @@
 
 An Nx workspace for shared, reusable libraries and apps, published under the `@devx-micro` npm scope.
 
-> **Status:** empty scaffold. No package exists yet, nothing is published, and **no licence has been
-> chosen**, so `package.json` says `UNLICENSED` until one is. Do not make this repository public
-> before a licence and a history check are in place.
+> **Status:** early. Licensed under [MPL-2.0](LICENSE). A secrets scan of the full git history
+> (`gitleaks git`) found nothing on 2026-11-17; re-run it before making this repository public.
 
 ## Layout
 

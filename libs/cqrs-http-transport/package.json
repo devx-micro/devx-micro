@@ -8,5 +8,6 @@
   "dependencies": {
     "@devx-micro/cqrs-tool-runtime": "0.1.0",
     "@nestjs/common": "^11.0.0"
-  }
+  },
+  "license": "MPL-2.0"
 }

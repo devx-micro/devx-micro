@@ -2,7 +2,7 @@
   "name": "@devx-micro/workspace",
   "private": true,
   "version": "0.0.0",
-  "license": "UNLICENSED",
+  "license": "MPL-2.0",
   "engines": {
     "node": ">=22.16"
   },
