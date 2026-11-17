@@ -1,0 +1,32 @@
+{
+  "name": "@devx-micro/workspace",
+  "private": true,
+  "version": "0.0.0",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.16"
+  },
+  "workspaces": [
+    "libs/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "nx run-many -t build",
+    "test": "nx run-many -t test",
+    "typecheck": "nx run-many -t typecheck",
+    "graph": "nx graph"
+  },
+  "devDependencies": {
+    "@nx/js": "24.0.6",
+    "@nx/workspace": "24.0.6",
+    "@swc-node/register": "^1.12.1",
+    "@swc/cli": "~0.8.1",
+    "@swc/core": "~1.16.22",
+    "@swc/helpers": "~0.5.18",
+    "@types/node": "^26.6.6",
+    "nx": "24.0.6",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.3",
+    "vitest": "^5.1.0"
+  }
+}

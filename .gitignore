@@ -1,0 +1,11 @@
+node_modules/
+dist/
+tmp/
+coverage/
+.nx/
+*.tsbuildinfo
+.env
+.env.*
+# Compiled declarations beside sources are build output, never source.
+libs/**/src/**/*.d.ts
+apps/**/src/**/*.d.ts
