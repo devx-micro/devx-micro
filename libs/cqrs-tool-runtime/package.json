@@ -8,5 +8,6 @@
   "dependencies": {
     "@devx-micro/observability-port": "0.1.0",
     "@nestjs/cqrs": "^11.0.3"
-  }
+  },
+  "license": "MPL-2.0"
 }
