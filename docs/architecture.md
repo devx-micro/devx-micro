@@ -1,14 +1,17 @@
 # Architecture
 
-This workspace holds three small libraries that together give a NestJS CQRS application a uniform,
+This workspace holds six small libraries that together give a NestJS CQRS application a uniform,
 observable, multi-transport tool surface.
 
 ```
-app-http ──► app-runtime ──► app-observability
+app-cli     ─┐
+app-repl    ─┤
+app-sidecar ─┼──► app-runtime ──► app-observability
+app-http    ─┘
 ```
 
 A package may depend only on packages to its right (and on `@nestjs/*` and third-party packages).
-Nx tags all three `scope:shared`, `type:util`.
+The four transports do not depend on each other. Nx tags all six `scope:shared`, `type:util`.
 
 ## Design rules
 
@@ -27,8 +30,9 @@ the library and implemented by the consumer. Examples:
 ### 2. One envelope, many transports
 
 Every transport calls `CqrsToolRuntime.dispatch`, which resolves (never rejects) to a `ToolEnvelope`.
-Transports differ only in how they _render_ it: the CLI prints it and returns `exitCode`; the sidecar
-writes a line; the REPL pretty-prints it; HTTP maps it to a status (`app-http`).
+Transports differ only in how they _render_ it: the CLI (`app-cli`) prints it and returns `exitCode`;
+the sidecar (`app-sidecar`) writes a line; the REPL (`app-repl`) pretty-prints it; HTTP maps it to a
+status (`app-http`).
 
 Three statuses exist because there are three outcomes: `success`, `error`, and `incomplete` (a
 resumable sequence that stopped part-way). Collapsing `incomplete` into either of the others loses

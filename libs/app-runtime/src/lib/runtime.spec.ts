@@ -3,12 +3,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import { CqrsToolRuntime, parseToolArguments } from './cqrs-tool-runtime';
-import {
-  formatReplHelp,
-  runInteractiveRepl,
-  runJsonLinesDriver,
-  runOneShot,
-} from './transports';
 import type { ToolBus, ToolOperationDescriptor } from './contracts';
 import { TOOL_EXIT_CODES, ToolRuntimeError } from './contracts';
 
@@ -386,63 +380,6 @@ describe('CqrsToolRuntime', () => {
   });
 });
 
-describe('CQRS tool transports', () => {
-  it('runs a stateless one-shot command/query round trip via runOneShot', async () => {
-    const { runtime } = createRuntime();
-    const stdout: string[] = [];
-    const io = {
-      stdout: (line: string) => stdout.push(line),
-      stderr: () => undefined,
-    };
-    await runOneShot(runtime, ['remember', '--value', 'stateless'], io);
-    const exitCode = await runOneShot(runtime, ['recall'], io);
-    expect(exitCode).toBe(0);
-    expect(JSON.parse(stdout[1]).data).toBe('stateless');
-  });
-
-  it('prints CLI help and exits successfully for --help', async () => {
-    const { runtime } = createRuntime();
-    const stdout: string[] = [];
-    const exitCode = await runOneShot(runtime, ['--help'], {
-      stdout: (line) => stdout.push(line),
-      stderr: () => undefined,
-    });
-    expect(exitCode).toBe(0);
-    expect(stdout[0]).toContain('Usage:');
-  });
-
-  it('drives the sidecar JSON-lines transport, including an invalid line', async () => {
-    const { runtime } = createRuntime();
-    const input = Readable.from([
-      '{"operation":"remember","input":{"value":"sidecar"}}\n',
-      'not-json\n',
-      '{"operation":"recall"}\n',
-    ]);
-    const { output, text } = createCapturingWritable();
-    await runJsonLinesDriver(runtime, input, output);
-    const lines = text()
-      .split('\n')
-      .filter((line) => line.trim())
-      .map((line) => JSON.parse(line));
-    expect(lines[0].status).toBe('success');
-    expect(lines[1].error.code).toBe('INVALID_JSON_LINE');
-    expect(lines[2].data).toBe('sidecar');
-  });
-
-  it('runs a stateful interactive REPL session and honors exit', async () => {
-    const { runtime } = createRuntime();
-    const input = Readable.from([
-      'remember --value repl\n',
-      'recall\n',
-      'exit\n',
-    ]);
-    const { output, text } = createCapturingWritable();
-    await runInteractiveRepl(runtime, input, output);
-    expect(text()).toContain('DATA');
-    expect(text()).toContain('repl');
-  });
-});
-
 /**
  * REPL tab-completion, which is the transport feature nothing was testing.
  *
@@ -565,93 +502,6 @@ describe('errors from a handler', () => {
 
     expect(envelope.status).toBe('error');
     expect(envelope.exitCode).toBeGreaterThan(0);
-  });
-});
-
-/**
- * The REPL's own help, which is man-page shaped rather than the CLI's usage text.
- *
- * 🔴 An unknown topic must come back as a **structured error envelope**, not as an empty page. A
- * REPL that prints a blank help section for a typo reads as "this operation exists and is
- * undocumented", which sends the reader looking for the wrong thing.
- */
-describe('formatReplHelp', () => {
-  it('lists the operations when no topic is given', () => {
-    const { runtime } = createRuntime();
-
-    const help = formatReplHelp(runtime);
-
-    expect(help).toContain('CQRS-TOOL(1)');
-    expect(help).toContain('remember');
-    expect(help).toContain('recall');
-  });
-
-  it('renders one operation as its own page, with its kind', () => {
-    const { runtime } = createRuntime();
-
-    const help = formatReplHelp(runtime, 'recall');
-
-    expect(help).toContain('CQRS-TOOL-RECALL(1)');
-    expect(help).toContain('QUERY');
-    expect(help).toContain('Recall the remembered value');
-  });
-
-  it('reports an unknown topic as an error envelope rather than an empty page', () => {
-    const { runtime } = createRuntime();
-
-    const help = formatReplHelp(runtime, 'nonexistent');
-
-    expect(help).toContain('UNKNOWN_OPERATION');
-    expect(help).toContain('nonexistent');
-  });
-});
-
-describe('the REPL loop', () => {
-  it('answers `help` and `help <operation>` without dispatching anything', async () => {
-    const { runtime, commandBus, queryBus } = createRuntime();
-    const input = Readable.from(['help\n', 'help remember\n', 'quit\n']);
-    const { output, text } = createCapturingWritable();
-
-    await runInteractiveRepl(runtime, input, output);
-
-    expect(text()).toContain('CQRS-TOOL(1)');
-    expect(text()).toContain('CQRS-TOOL-REMEMBER(1)');
-    expect(commandBus.received).toHaveLength(0);
-    expect(queryBus.received).toHaveLength(0);
-  });
-
-  it('closes on `quit` as well as `exit`', async () => {
-    const { runtime } = createRuntime();
-    const input = Readable.from(['quit\n', 'recall\n']);
-    const { output, text } = createCapturingWritable();
-
-    await runInteractiveRepl(runtime, input, output);
-
-    // The line after `quit` must not be executed — a REPL that keeps reading after being told to
-    // close will run whatever was already typed ahead of it.
-    expect(text()).not.toContain('DATA');
-  });
-
-  it('ignores a blank line instead of dispatching an empty operation', async () => {
-    const { runtime, commandBus } = createRuntime();
-    const input = Readable.from(['\n', '   \n', 'exit\n']);
-    const { output } = createCapturingWritable();
-
-    await runInteractiveRepl(runtime, input, output);
-
-    expect(commandBus.received).toHaveLength(0);
-  });
-
-  it('reports an unknown operation and keeps the session open', async () => {
-    const { runtime } = createRuntime();
-    const input = Readable.from(['nope\n', 'recall\n', 'exit\n']);
-    const { output, text } = createCapturingWritable();
-
-    await runInteractiveRepl(runtime, input, output);
-
-    expect(text()).toContain('UNKNOWN_OPERATION');
-    // Still answering afterwards: a REPL that dies on a typo is worse than one that says no.
-    expect(text()).toContain('DATA');
   });
 });
 

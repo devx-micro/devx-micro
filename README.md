@@ -10,7 +10,10 @@ An [Nx](https://nx.dev) workspace for shared, reusable TypeScript libraries, pub
 
 | Package                                                                                                      | What it is                                                                                                                             |
 | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@devx-micro/app-runtime`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-runtime)             | One dispatch path for a NestJS CQRS app, exposed as a CLI, REPL and JSON-lines sidecar, answering with a uniform result envelope.      |
+| [`@devx-micro/app-runtime`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-runtime)             | One dispatch path for a NestJS CQRS app, answering every transport with a uniform result envelope.                                     |
+| [`@devx-micro/app-cli`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-cli)                     | The command-line transport: `runOneShot` runs one operation from `argv`.                                                               |
+| [`@devx-micro/app-repl`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-repl)                   | The interactive transport: a prompt with completion, help and session variables.                                                       |
+| [`@devx-micro/app-sidecar`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-sidecar)             | The JSON-lines transport, server (`runJsonLinesDriver`) and client (`SidecarClient`).                                                  |
 | [`@devx-micro/app-http`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-http)                   | Renders that envelope over HTTP: exit code to status mapping, and `unwrap` to a response or `HttpException`.                           |
 | [`@devx-micro/app-observability`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-observability) | The recorder port, observation record shape, content addressing (RFC 8785 + SHA-256) and pure inference-run logic. No storage, no I/O. |
 
@@ -20,19 +23,18 @@ with TypeDoc (see [Documentation](#documentation)).
 ### How they fit together
 
 ```
-                      ┌─────────────────────────────┐
-  CLI / REPL /        │  @devx-micro/cqrs-tool-     │   ToolEnvelope
-  sidecar (stdio) ───►│  runtime  (CqrsToolRuntime) │────────────────┐
-                      └──────┬──────────────┬───────┘                │
-                             │ commands /   │ Recorder (optional)    ▼
-                             │ queries      ▼                ┌───────────────────┐
-                             ▼       ┌───────────────┐       │ cqrs-http-        │
-                      your CommandBus│ observability │       │ transport:        │──► HTTP response
-                      and QueryBus   │ -port         │       │ unwrap(envelope)  │
-                                     └───────────────┘       └───────────────────┘
+  app-cli     ─┐
+  app-repl    ─┤
+  app-sidecar ─┼──► app-runtime ──► your CommandBus / QueryBus
+  app-http    ─┘        │
+                        └──► Recorder (optional) ──► app-observability
+
+  Every transport renders the same ToolEnvelope its own way:
+  CLI exit code · REPL page · JSON line · HTTP response
 ```
 
-Dependencies point one way: `app-http` → `app-runtime` → `app-observability`.
+Dependencies point one way: each transport (`app-cli`, `app-repl`, `app-sidecar`, `app-http`) →
+`app-runtime` → `app-observability`. The transports do not depend on each other.
 See [docs/architecture.md](docs/architecture.md) for the design decisions behind this.
 
 ## Getting started
