@@ -17,6 +17,11 @@
             "input": "{workspaceRoot}",
             "glob": "LICENSE",
             "output": "."
+          },
+          {
+            "input": "libs/cqrs-http-transport",
+            "glob": "README.md",
+            "output": "."
           }
         ]
       }
