@@ -17,6 +17,11 @@
             "input": "{workspaceRoot}",
             "glob": "LICENSE",
             "output": "."
+          },
+          {
+            "input": "libs/observability-port",
+            "glob": "README.md",
+            "output": "."
           }
         ]
       }

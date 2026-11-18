@@ -1,11 +1,11 @@
 {
   "name": "@devx-micro/cqrs-tool-runtime",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "type": "commonjs",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
-    "@devx-micro/observability-port": "0.1.2",
+    "@devx-micro/observability-port": "0.1.3",
     "@nestjs/cqrs": "^11.0.3"
   },
   "license": "MPL-2.0",
