@@ -50,3 +50,7 @@ Use the Nx generator (`npx nx g @nx/js:lib`), then:
 
 Releases are cut with a `chore: release x.y.z` commit that bumps every package version (and the
 internal `@devx-micro/*` dependency pins) together.
+
+Before publishing, run `npm run verify:esm`. The packages are CommonJS, and it checks that each built
+package's named exports are visible to a native-ESM `import`; the build must keep emitting a re-export
+form Node's loader can detect (`tsc`'s `tslib.__exportStar`, not swc's `_export_star`).
