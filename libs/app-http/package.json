@@ -1,11 +1,11 @@
 {
   "name": "@devx-micro/app-http",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "type": "commonjs",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
-    "@devx-micro/app-runtime": "0.1.3",
+    "@devx-micro/app-runtime": "0.2.0",
     "@nestjs/common": "^11.0.0"
   },
   "license": "MPL-2.0",

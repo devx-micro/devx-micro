@@ -1,6 +1,6 @@
 {
   "name": "@devx-micro/app-observability",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "type": "commonjs",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
