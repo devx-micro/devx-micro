@@ -19,6 +19,7 @@ import { createHash } from 'node:crypto';
 
 import { assertWellFormedText, canonicalJson } from './canonical-json';
 
+/** `1-` followed by 32 hex characters: the leading SHA-256 digest of some content. Names bytes, not a type. */
 export type ContentId = string;
 
 const DIGEST_LENGTH = 32;

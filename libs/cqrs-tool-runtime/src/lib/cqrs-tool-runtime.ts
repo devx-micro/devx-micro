@@ -36,8 +36,11 @@ export interface CqrsToolRuntimeOptions {
    * and the REPL's variable commands say plainly that no session board is bound.
    */
   readonly sessionBoard?: SessionBoardPort;
+  /** Executes the request of every `kind: 'command'` operation. */
   readonly commandBus: ToolBus;
+  /** Executes the request of every `kind: 'query'` operation. */
   readonly queryBus: ToolBus;
+  /** The operations this runtime serves. Names must be unique, or construction throws `DUPLICATE_OPERATION`. */
   readonly operations: readonly ToolOperationDescriptor[];
   /**
    * Where each dispatch is recorded (ADR-072 D7: this is one of the four seams). Optional and injected: this
@@ -179,6 +182,7 @@ export class CqrsToolRuntime {
     }
   }
 
+  /** Every registered operation's `name`, `kind` and `summary`, sorted by name. */
   public listOperations(): readonly Pick<
     ToolOperationDescriptor,
     'kind' | 'name' | 'summary'
@@ -233,6 +237,10 @@ export class CqrsToolRuntime {
     };
   }
 
+  /**
+   * Tab-completion candidates for a REPL line: operation names and common commands for the first
+   * word, then option flags (`--json`, `--json-file`, …). Returned as a single group of candidates.
+   */
   public completeReplLine(input: string): string[][] {
     const trimmed = input.trim();
     const options = ['--help', '--json', '--json-file', '--format'];
@@ -261,10 +269,20 @@ export class CqrsToolRuntime {
     ];
   }
 
+  /** The plain-text operations listing, with `executable` shown in the usage line. See {@link formatOperationsHelp}. */
   public help(executable = 'tool'): string {
     return formatOperationsHelp(this.listOperations(), executable);
   }
 
+  /**
+   * Runs one operation and answers with an envelope. **Never rejects**: an unknown operation, a
+   * non-object input, a refused input, a handler failure and a stopped sequence are all reported in
+   * the envelope's `status`, `exitCode` and `error`.
+   *
+   * @param operationName - The registered operation to run.
+   * @param rawInput - The caller's input; must be a plain object.
+   * @param correlationId - Echoed in the envelope; a random UUID when omitted.
+   */
   public async dispatch(
     operationName: string,
     rawInput: Record<string, unknown> = {},

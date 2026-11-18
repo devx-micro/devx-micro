@@ -70,7 +70,9 @@ export const noopRecorder: Recorder = {
 
 /** Wall clock for the two timestamps, monotonic clock for the durations (ADR-072 D5). Injected. */
 export interface Clock {
+  /** The current wall-clock time as UTC ISO-8601. */
   nowIso(): string;
+  /** A monotonic reading in milliseconds, used only for durations. */
   monotonicMs(): number;
 }
 

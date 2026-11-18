@@ -222,7 +222,7 @@ export async function runJsonLinesDriver(
 }
 
 /** What the REPL's completer knows about the session's variables: each name and its top-level fields. */
-type VariableIndex = ReadonlyMap<string, readonly string[]>;
+export type VariableIndex = ReadonlyMap<string, readonly string[]>;
 
 /** Completes `$name` and `$name.field` against what the session holds; otherwise as the runtime does. */
 export function completeReplWithVariables(

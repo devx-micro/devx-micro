@@ -24,6 +24,10 @@ export interface BoundedRecordingOptions {
   readonly now?: () => number;
 }
 
+/**
+ * Runs a recording call with a time bound and a circuit breaker. See {@link BoundedRecordingOptions}
+ * for the knobs and the module notes above for the guarantees.
+ */
 export class BoundedRecording {
   private pausedUntil = 0;
   private pausedFrom = 0;
@@ -51,6 +55,10 @@ export class BoundedRecording {
   }
 
   /** Run `work` within the bound. Resolves whatever happens. */
+  /**
+   * Runs `work`, awaiting it for at most `timeoutMs`. Never throws and never waits longer than the
+   * bound; a timeout opens the breaker for `cooldownMs`.
+   */
   public async run(work: () => Promise<unknown> | unknown): Promise<void> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let timedOut = false;
