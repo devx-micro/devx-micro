@@ -14,15 +14,14 @@
     "importHelpers": true,
     "skipLibCheck": true,
     "paths": {
+      "@devx-micro/app-cli": ["./libs/app-cli/src/index.ts"],
+      "@devx-micro/app-repl": ["./libs/app-repl/src/index.ts"],
+      "@devx-micro/app-sidecar": ["./libs/app-sidecar/src/index.ts"],
       "@devx-micro/app-observability": [
         "./libs/app-observability/src/index.ts"
       ],
-      "@devx-micro/app-runtime": [
-        "./libs/app-runtime/src/index.ts"
-      ],
-      "@devx-micro/app-http": [
-        "./libs/app-http/src/index.ts"
-      ]
+      "@devx-micro/app-runtime": ["./libs/app-runtime/src/index.ts"],
+      "@devx-micro/app-http": ["./libs/app-http/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "dist", "tmp"]

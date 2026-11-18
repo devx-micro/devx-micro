@@ -1,11 +1,15 @@
 import { PassThrough } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 
-import { CqrsToolRuntime } from './cqrs-tool-runtime';
-import type { ToolBus, ToolOperationDescriptor } from './contracts';
+import {
+  CqrsToolRuntime,
+  type SessionBoardPort,
+  type ToolBus,
+  type ToolOperationDescriptor,
+} from '@devx-micro/app-runtime';
+
 import { bindOperationLine, describeVariable } from './repl-language';
-import type { SessionBoardPort } from './session-board';
-import { completeReplWithVariables, runInteractiveRepl } from './transports';
+import { completeReplWithVariables, runInteractiveRepl } from './repl';
 
 /** QA probes for REPL sessions and variables. Each states the behaviour that SHOULD hold. */
 class MapPort implements SessionBoardPort {

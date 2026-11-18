@@ -1,6 +1,9 @@
-import { TOOL_EXIT_CODES, ToolRuntimeError } from './contracts';
-import { parseToolArguments } from './cqrs-tool-runtime';
-import { VARIABLE_NAME } from './session-board';
+import {
+  TOOL_EXIT_CODES,
+  ToolRuntimeError,
+  VARIABLE_NAME,
+  parseToolArguments,
+} from '@devx-micro/app-runtime';
 
 /**
  * The REPL's line language, kept apart from the readline loop so it can be tested

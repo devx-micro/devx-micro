@@ -1,0 +1,23 @@
+{
+  "name": "@devx-micro/app-repl",
+  "version": "0.1.3",
+  "type": "commonjs",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "@devx-micro/app-runtime": "0.1.3"
+  },
+  "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/devx-micro/devx-micro.git",
+    "directory": "libs/app-repl"
+  },
+  "bugs": {
+    "url": "https://github.com/devx-micro/devx-micro/issues"
+  },
+  "homepage": "https://github.com/devx-micro/devx-micro/tree/main/libs/app-repl#readme",
+  "publishConfig": {
+    "access": "public"
+  }
+}

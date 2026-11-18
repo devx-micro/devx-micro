@@ -1,14 +1,19 @@
 # Architecture
 
-This workspace holds three small libraries that together give a NestJS CQRS application a uniform,
+This workspace holds six small libraries that together give a NestJS CQRS application a uniform,
 observable, multi-transport tool surface.
 
-```
-app-http ──► app-runtime ──► app-observability
+```mermaid
+flowchart LR
+  cli[app-cli] --> runtime[app-runtime]
+  repl[app-repl] --> runtime
+  sidecar[app-sidecar] --> runtime
+  http[app-http] --> runtime
+  runtime --> obs[app-observability]
 ```
 
 A package may depend only on packages to its right (and on `@nestjs/*` and third-party packages).
-Nx tags all three `scope:shared`, `type:util`.
+The four transports do not depend on each other. Nx tags all six `scope:shared`, `type:util`.
 
 ## Design rules
 
@@ -27,8 +32,9 @@ the library and implemented by the consumer. Examples:
 ### 2. One envelope, many transports
 
 Every transport calls `CqrsToolRuntime.dispatch`, which resolves (never rejects) to a `ToolEnvelope`.
-Transports differ only in how they _render_ it: the CLI prints it and returns `exitCode`; the sidecar
-writes a line; the REPL pretty-prints it; HTTP maps it to a status (`app-http`).
+Transports differ only in how they _render_ it: the CLI (`app-cli`) prints it and returns `exitCode`;
+the sidecar (`app-sidecar`) writes a line; the REPL (`app-repl`) pretty-prints it; HTTP maps it to a
+status (`app-http`).
 
 Three statuses exist because there are three outcomes: `success`, `error`, and `incomplete` (a
 resumable sequence that stopped part-way). Collapsing `incomplete` into either of the others loses
@@ -68,11 +74,12 @@ emitter's responsibility.
 
 ## Inference-run model (`app-observability`)
 
-```
-contract (role, goal, requirements, assumptions)
-   └─► iteration 1..n : evaluate every requirement ─► verdict met | not-met | not-evaluated
-                         └─► decideIteration ─► accepted | rejected (+ reason)
-   └─► completeRun ─► ResultRecord + InferenceRunDetail  (an `inference-run` observation)
+```mermaid
+flowchart TD
+  contract["contract<br/>(role, goal, requirements, assumptions)"] --> iter["iteration 1..n:<br/>evaluate every requirement"]
+  iter --> verdict["verdict per requirement:<br/>met | not-met | not-evaluated"]
+  iter --> decide["decideIteration"] --> outcome["accepted | rejected (+ reason)"]
+  contract --> complete["completeRun"] --> result["ResultRecord + InferenceRunDetail<br/>(an inference-run observation)"]
 ```
 
 - A requirement's identity (`requirementId`) hashes normalised text, so reformatting does not change

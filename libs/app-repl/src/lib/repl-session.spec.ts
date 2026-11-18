@@ -1,10 +1,15 @@
 import { PassThrough } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 
-import { CqrsToolRuntime } from './cqrs-tool-runtime';
-import type { ToolBus, ToolOperationDescriptor } from './contracts';
-import { VARIABLE_NAME, type SessionBoardPort } from './session-board';
-import { completeReplWithVariables, runInteractiveRepl } from './transports';
+import {
+  CqrsToolRuntime,
+  VARIABLE_NAME,
+  type SessionBoardPort,
+  type ToolBus,
+  type ToolOperationDescriptor,
+} from '@devx-micro/app-runtime';
+
+import { completeReplWithVariables, runInteractiveRepl } from './repl';
 
 /** A port over a Map, so the REPL's own behaviour is tested without a real store. */
 class MapPort implements SessionBoardPort {

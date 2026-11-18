@@ -1,8 +1,8 @@
 # @devx-micro/app-runtime
 
 One dispatch path for a NestJS CQRS application, exposed over every transport a tool needs: a
-one-shot **CLI**, an interactive **REPL**, a newline-delimited JSON **sidecar**, and (with
-[`@devx-micro/app-http`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-http)) **HTTP**.
+one-shot **CLI** ([`@devx-micro/app-cli`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-cli)), an interactive **REPL** ([`@devx-micro/app-repl`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-repl)), a newline-delimited JSON
+**sidecar** ([`@devx-micro/app-sidecar`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-sidecar)) and **HTTP** ([`@devx-micro/app-http`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-http)).
 
 You describe each operation once, as a `ToolOperationDescriptor`. The runtime validates the input,
 builds the command or query, executes it on your `CommandBus` / `QueryBus`, and always answers with
@@ -19,7 +19,8 @@ npm install @devx-micro/app-runtime
 
 ```ts
 import { CommandBus, QueryBus } from '@nestjs/cqrs';
-import { CqrsToolRuntime, requiredString, runOneShot, type ToolOperationDescriptor } from '@devx-micro/app-runtime';
+import { runOneShot } from '@devx-micro/app-cli';
+import { CqrsToolRuntime, requiredString, type ToolOperationDescriptor } from '@devx-micro/app-runtime';
 
 const operations: ToolOperationDescriptor<{ id: string }>[] = [
   {
@@ -128,65 +129,15 @@ Use `assertInputSchemaAgreesWithValidate(descriptor, validExample)` in a spec to
 
 ## Transports
 
-All four go through `CqrsToolRuntime.dispatch`.
+Every transport goes through `CqrsToolRuntime.dispatch`, and each lives in its own package so you
+install only the ones your app exposes:
 
-### CLI: `runOneShot(runtime, args)`
-
-```bash
-tool note.get --id 42
-tool note.create --json '{"title":"hi"}'
-tool note.create --json-file ./payload.json
-tool --help
-tool help note.get
-```
-
-- `--key value` sets a string; a bare `--flag` sets `true`.
-- A repeated key **accumulates** into an array, in order, across flags, `--json` and `--json-file`.
-- `--json` takes an object inline; `--json-file` reads it from disk (a leading BOM is stripped).
-  Prefer the file when the payload contains quotes or backticks your shell would mangle.
-- Prints one envelope as JSON on stdout and resolves to the exit code to use.
-- Argument errors are reported as an envelope with operation `parse` and exit code `2`.
-
-### Sidecar: `runJsonLinesDriver(runtime, input?, output?)`
-
-Reads one JSON request per line, writes one envelope per line. Intended for editor extensions and
-other parent processes.
-
-```jsonc
-{"operation":"note.get","input":{"id":"42"},"correlationId":"abc"}
-{"operation":"help","input":{"topic":"note.get"}}
-```
-
-A line that is not valid JSON yields an `INVALID_JSON_LINE` envelope; the loop continues.
-
-### REPL: `runInteractiveRepl(runtime, input?, output?)`
-
-An interactive prompt with tab completion, `help [operation]`, and `exit` / `quit`. Each line may be
-flags (`note.get --id 42`) or a JSON request. Every line is dispatched with the correlation id
-`<sessionId>.<n>`, so one sitting can be grouped.
-
-If you bind a `SessionBoardPort` (see the `sessionBoard` option), the REPL also supports
-**session variables**:
-
-```
-tool> set $n = note.get --id 42
-tool> note.update --id $n.id --title "renamed"
-tool> vars
-tool> board save my-session
-```
-
-References are `$name`, `$name.field`, `$name[0]`; write `$$` for a literal `$`. A resolved value is
-substituted as exactly one argument (or one JSON value), after tokenising, so it can never be
-re-parsed into extra flags. Without a board, operations still run and the variable commands say
-plainly that none is bound.
-
-The line language is exported for reuse and testing: `parseReplCommand`, `bindOperationLine`,
-`referenceOf`, `followPath`, `tokenise`.
-
-### HTTP
-
-HTTP rendering lives in [`@devx-micro/app-http`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-http), which keeps this
-package free of `@nestjs/common`.
+| Transport | Package                                                                                          | Entry point                                    |
+| --------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
+| CLI       | [`@devx-micro/app-cli`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-cli)         | `runOneShot(runtime, args)`                    |
+| REPL      | [`@devx-micro/app-repl`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-repl)       | `runInteractiveRepl(runtime)`                  |
+| Sidecar   | [`@devx-micro/app-sidecar`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-sidecar) | `runJsonLinesDriver(runtime)`, `SidecarClient` |
+| HTTP      | [`@devx-micro/app-http`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-http)       | `unwrap(envelope)`                             |
 
 ## Recording what was dispatched
 
