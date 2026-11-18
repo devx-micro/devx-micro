@@ -3,11 +3,13 @@
 This workspace holds six small libraries that together give a NestJS CQRS application a uniform,
 observable, multi-transport tool surface.
 
-```
-app-cli     ─┐
-app-repl    ─┤
-app-sidecar ─┼──► app-runtime ──► app-observability
-app-http    ─┘
+```mermaid
+flowchart LR
+  cli[app-cli] --> runtime[app-runtime]
+  repl[app-repl] --> runtime
+  sidecar[app-sidecar] --> runtime
+  http[app-http] --> runtime
+  runtime --> obs[app-observability]
 ```
 
 A package may depend only on packages to its right (and on `@nestjs/*` and third-party packages).
@@ -72,11 +74,12 @@ emitter's responsibility.
 
 ## Inference-run model (`app-observability`)
 
-```
-contract (role, goal, requirements, assumptions)
-   └─► iteration 1..n : evaluate every requirement ─► verdict met | not-met | not-evaluated
-                         └─► decideIteration ─► accepted | rejected (+ reason)
-   └─► completeRun ─► ResultRecord + InferenceRunDetail  (an `inference-run` observation)
+```mermaid
+flowchart TD
+  contract["contract<br/>(role, goal, requirements, assumptions)"] --> iter["iteration 1..n:<br/>evaluate every requirement"]
+  iter --> verdict["verdict per requirement:<br/>met | not-met | not-evaluated"]
+  iter --> decide["decideIteration"] --> outcome["accepted | rejected (+ reason)"]
+  contract --> complete["completeRun"] --> result["ResultRecord + InferenceRunDetail<br/>(an inference-run observation)"]
 ```
 
 - A requirement's identity (`requirementId`) hashes normalised text, so reformatting does not change

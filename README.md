@@ -22,15 +22,15 @@ with TypeDoc (see [Documentation](#documentation)).
 
 ### How they fit together
 
-```
-  app-cli     ─┐
-  app-repl    ─┤
-  app-sidecar ─┼──► app-runtime ──► your CommandBus / QueryBus
-  app-http    ─┘        │
-                        └──► Recorder (optional) ──► app-observability
-
-  Every transport renders the same ToolEnvelope its own way:
-  CLI exit code · REPL page · JSON line · HTTP response
+```mermaid
+flowchart LR
+  cli[app-cli] --> runtime
+  repl[app-repl] --> runtime
+  sidecar[app-sidecar] --> runtime
+  http[app-http] --> runtime
+  runtime["app-runtime<br/>(CqrsToolRuntime)"] -->|commands / queries| buses[your CommandBus / QueryBus]
+  runtime -.->|Recorder, optional| obs[app-observability]
+  runtime -->|ToolEnvelope| out["each transport renders it:<br/>CLI exit code · REPL page · JSON line · HTTP response"]
 ```
 
 Dependencies point one way: each transport (`app-cli`, `app-repl`, `app-sidecar`, `app-http`) →
