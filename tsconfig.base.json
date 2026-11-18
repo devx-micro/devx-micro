@@ -14,14 +14,14 @@
     "importHelpers": true,
     "skipLibCheck": true,
     "paths": {
-      "@devx-micro/observability-port": [
-        "./libs/observability-port/src/index.ts"
+      "@devx-micro/app-observability": [
+        "./libs/app-observability/src/index.ts"
       ],
-      "@devx-micro/cqrs-tool-runtime": [
-        "./libs/cqrs-tool-runtime/src/index.ts"
+      "@devx-micro/app-runtime": [
+        "./libs/app-runtime/src/index.ts"
       ],
-      "@devx-micro/cqrs-http-transport": [
-        "./libs/cqrs-http-transport/src/index.ts"
+      "@devx-micro/app-http": [
+        "./libs/app-http/src/index.ts"
       ]
     }
   },

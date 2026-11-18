@@ -1,23 +1,23 @@
 {
-  "name": "@devx-micro/cqrs-tool-runtime",
+  "name": "@devx-micro/app-runtime",
   "version": "0.1.3",
   "type": "commonjs",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
-    "@devx-micro/observability-port": "0.1.3",
+    "@devx-micro/app-observability": "0.1.3",
     "@nestjs/cqrs": "^11.0.3"
   },
   "license": "MPL-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/devx-micro/devx-micro.git",
-    "directory": "libs/cqrs-tool-runtime"
+    "directory": "libs/app-runtime"
   },
   "bugs": {
     "url": "https://github.com/devx-micro/devx-micro/issues"
   },
-  "homepage": "https://github.com/devx-micro/devx-micro/tree/main/libs/cqrs-tool-runtime#readme",
+  "homepage": "https://github.com/devx-micro/devx-micro/tree/main/libs/app-runtime#readme",
   "publishConfig": {
     "access": "public"
   }

@@ -9,7 +9,7 @@ import {
   type Clock,
   type ObservationInput,
   type Recorder,
-} from '@devx-micro/observability-port';
+} from '@devx-micro/app-observability';
 
 import {
   TOOL_ENVELOPE_VERSION,
@@ -154,7 +154,7 @@ export function formatOperationsHelp(
  */
 export class CqrsToolRuntime {
   private readonly operations = new Map<string, ToolOperationDescriptor>();
-  /** The recorder wait and breaker, shared with the dispatch seam (`observability-port`). */
+  /** The recorder wait and breaker, shared with the dispatch seam (`app-observability`). */
   private readonly boundedRecording: BoundedRecording;
 
   /** The bound session board, if any. */
@@ -164,7 +164,7 @@ export class CqrsToolRuntime {
 
   public constructor(private readonly options: CqrsToolRuntimeOptions) {
     this.boundedRecording = new BoundedRecording({
-      label: 'cqrs-tool-runtime',
+      label: 'app-runtime',
       timeoutMs: options.recordTimeoutMs,
       cooldownMs: options.recordCooldownMs,
       now: options.now,
@@ -351,7 +351,7 @@ export class CqrsToolRuntime {
       const measured = timing?.finish();
       const observation: ObservationInput = {
         kind: operation.observationKind ?? 'operation',
-        operator: this.options.operator ?? 'cqrs-tool-runtime',
+        operator: this.options.operator ?? 'app-runtime',
         operation: operation.name,
         beforeTimestamp: measured?.beforeTimestamp ?? new Date().toISOString(),
         afterTimestamp: measured?.afterTimestamp ?? new Date().toISOString(),

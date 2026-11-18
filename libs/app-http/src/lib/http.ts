@@ -3,14 +3,14 @@ import { HttpException } from '@nestjs/common';
 import {
   TOOL_EXIT_CODES,
   type ToolEnvelope,
-} from '@devx-micro/cqrs-tool-runtime';
+} from '@devx-micro/app-runtime';
 
 /**
  * The HTTP half of the transport contract: an envelope, as a response or a thrown status.
  *
  * 🔴 **One copy, in a Nest-dependent library of its own**. Duplicating the HTTP
  * rendering across apps is how one transport comes to answer 500 where the CLI answers exit code 2.
- * It is not in `cqrs-tool-runtime`, which stays Nest-free on purpose.
+ * It is not in `app-runtime`, which stays Nest-free on purpose.
  */
 
 /** The envelope's `exitCode`, as an HTTP status. */

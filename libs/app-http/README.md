@@ -1,22 +1,22 @@
-# @devx-micro/cqrs-http-transport
+# @devx-micro/app-http
 
-The HTTP half of the [`@devx-micro/cqrs-tool-runtime`](https://github.com/devx-micro/devx-micro/tree/main/libs/cqrs-tool-runtime) transport contract:
+The HTTP half of the [`@devx-micro/app-runtime`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-runtime) transport contract:
 turn a `ToolEnvelope` into a response body, or into a thrown NestJS `HttpException`.
 
-It lives in its own package so that `cqrs-tool-runtime` can stay free of `@nestjs/common`, and so
+It lives in its own package so that `app-runtime` can stay free of `@nestjs/common`, and so
 that every HTTP app in a codebase shares **one** mapping from exit code to status instead of each
 growing its own.
 
 ```bash
-npm install @devx-micro/cqrs-http-transport
+npm install @devx-micro/app-http
 ```
 
 ## Usage
 
 ```ts
 import { Body, Controller, Param, Post } from '@nestjs/common';
-import { CqrsToolRuntime } from '@devx-micro/cqrs-tool-runtime';
-import { unwrap } from '@devx-micro/cqrs-http-transport';
+import { CqrsToolRuntime } from '@devx-micro/app-runtime';
+import { unwrap } from '@devx-micro/app-http';
 
 @Controller('ops')
 export class OperationsController {

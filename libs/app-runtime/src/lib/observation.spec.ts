@@ -5,7 +5,7 @@ import type {
   Clock,
   ObservationInput,
   Recorder,
-} from '@devx-micro/observability-port';
+} from '@devx-micro/app-observability';
 
 import { CqrsToolRuntime } from './cqrs-tool-runtime';
 import {

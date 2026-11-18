@@ -1,4 +1,4 @@
-import type { ObservationKind } from '@devx-micro/observability-port';
+import type { ObservationKind } from '@devx-micro/app-observability';
 
 /** The `schemaVersion` carried by every {@link ToolEnvelope}. */
 export const TOOL_ENVELOPE_VERSION = '1.0.0' as const;

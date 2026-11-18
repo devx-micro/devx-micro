@@ -1,4 +1,4 @@
-# @devx-micro/observability-port
+# @devx-micro/app-observability
 
 The **port** for recording observations of work that was done: the record shape, the `Recorder`
 interface, content addressing, and the pure logic for recording inference runs. It holds **no
@@ -6,7 +6,7 @@ storage and no I/O**. An implementation is injected by the application's composi
 that emits observations depends only on this package.
 
 ```bash
-npm install @devx-micro/observability-port
+npm install @devx-micro/app-observability
 ```
 
 Everything here is pure and deterministic unless noted, and every validator takes `unknown` and
@@ -32,7 +32,7 @@ The field list is closed: a new field or a changed meaning bumps `OBSERVATION_SC
 ### The recorder port (`recorder`)
 
 ```ts
-import { noopRecorder, startTiming, type Recorder } from '@devx-micro/observability-port';
+import { noopRecorder, startTiming, type Recorder } from '@devx-micro/app-observability';
 
 const timing = startTiming(); // injectable Clock; defaults to systemClock
 const result = await doTheWork();

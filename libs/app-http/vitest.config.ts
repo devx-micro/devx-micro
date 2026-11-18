@@ -10,7 +10,7 @@ export default defineConfig({
   plugins: [swcDecoratorMetadata()],
   resolve: { alias: workspaceAliases() },
   test: {
-    ...testDefaults('observability-port'),
+    ...testDefaults('app-http'),
     include: ['src/**/*.spec.ts'],
   },
 });

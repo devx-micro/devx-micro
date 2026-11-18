@@ -1,8 +1,8 @@
-# @devx-micro/cqrs-tool-runtime
+# @devx-micro/app-runtime
 
 One dispatch path for a NestJS CQRS application, exposed over every transport a tool needs: a
 one-shot **CLI**, an interactive **REPL**, a newline-delimited JSON **sidecar**, and (with
-[`@devx-micro/cqrs-http-transport`](https://github.com/devx-micro/devx-micro/tree/main/libs/cqrs-http-transport)) **HTTP**.
+[`@devx-micro/app-http`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-http)) **HTTP**.
 
 You describe each operation once, as a `ToolOperationDescriptor`. The runtime validates the input,
 builds the command or query, executes it on your `CommandBus` / `QueryBus`, and always answers with
@@ -12,14 +12,14 @@ The package is deliberately NestJS-light: it depends on `@nestjs/cqrs` types onl
 buses through the structural `ToolBus` interface, so a test double works as well as the real bus.
 
 ```bash
-npm install @devx-micro/cqrs-tool-runtime
+npm install @devx-micro/app-runtime
 ```
 
 ## Quick start
 
 ```ts
 import { CommandBus, QueryBus } from '@nestjs/cqrs';
-import { CqrsToolRuntime, requiredString, runOneShot, type ToolOperationDescriptor } from '@devx-micro/cqrs-tool-runtime';
+import { CqrsToolRuntime, requiredString, runOneShot, type ToolOperationDescriptor } from '@devx-micro/app-runtime';
 
 const operations: ToolOperationDescriptor<{ id: string }>[] = [
   {
@@ -185,12 +185,12 @@ The line language is exported for reuse and testing: `parseReplCommand`, `bindOp
 
 ### HTTP
 
-HTTP rendering lives in [`@devx-micro/cqrs-http-transport`](https://github.com/devx-micro/devx-micro/tree/main/libs/cqrs-http-transport), which keeps this
+HTTP rendering lives in [`@devx-micro/app-http`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-http), which keeps this
 package free of `@nestjs/common`.
 
 ## Recording what was dispatched
 
-Pass a `Recorder` from [`@devx-micro/observability-port`](https://github.com/devx-micro/devx-micro/tree/main/libs/observability-port) to observe every
+Pass a `Recorder` from [`@devx-micro/app-observability`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-observability) to observe every
 dispatch of a registered operation:
 
 ```ts
