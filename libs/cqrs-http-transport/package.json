@@ -19,7 +19,6 @@
   },
   "homepage": "https://github.com/devx-micro/devx-micro/tree/main/libs/cqrs-http-transport#readme",
   "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.npmjs.org/"
+    "access": "public"
   }
 }
