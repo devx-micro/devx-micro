@@ -1,14 +1,14 @@
 /**
- * Requirement identity — ADR-072 D3, ADR-073 D2.
+ * Requirement identity.
  *
  * A `requirementId` identifies the claim, not its layout, so requirement text — and only requirement
  * text — is hashed in a normal form: NFC; CRLF and CR to LF; each line stripped of leading and trailing
  * whitespace; runs of spaces and tabs inside a line collapsed to one space; blank lines at the start
  * and end removed. Line breaks are kept: they are structure, so `a\nb` and `a b` stay different.
  *
- * ⚠️ **Only ASCII space and tab collapse inside a line**, as ADR-072 D3 words it, while `trim()` at a
+ * ⚠️ **Only ASCII space and tab collapse inside a line**, as specified, while `trim()` at a
  * line's edges strips any Unicode whitespace. So `a b` and `a\u00a0b` are different claims and a
- * leading or trailing NBSP is layout. Widening the collapse is an ADR-072 amendment, not an edit here.
+ * leading or trailing NBSP is layout. Widening the collapse changes every requirement id, so it is a versioned change, not an edit here.
  */
 import { contentIdOfText, type ContentId } from './content-id';
 

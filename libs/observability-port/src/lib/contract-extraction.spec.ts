@@ -77,7 +77,7 @@ describe('extractContract', () => {
     expect(contract.requirements.map((r) => r.text)).toEqual(['A', 'B']);
   });
 
-  it('reports a duplicate requirement once and keeps the first, and the contract is incomplete (D2)', () => {
+  it('reports a duplicate requirement once and keeps the first, and the contract is incomplete', () => {
     const contract = extractContract(
       '## Requirements\n\n- Must be JSON.\n-   Must   be JSON.\n- Another.\n',
     );
@@ -89,7 +89,7 @@ describe('extractContract', () => {
     expect(contract.contractComplete).toBe(false);
   });
 
-  it('a step with no requirements has requirements [] and contractComplete false (D8)', () => {
+  it('a step with no requirements has requirements [] and contractComplete false', () => {
     const contract = extractContract(
       '# `s` — does a thing\n\nJust some prose.\n',
     );

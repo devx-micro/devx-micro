@@ -6,7 +6,7 @@ import type { ToolBus, ToolOperationDescriptor } from './contracts';
 import { VARIABLE_NAME, type SessionBoardPort } from './session-board';
 import { completeReplWithVariables, runInteractiveRepl } from './transports';
 
-/** A port over a Map, so the REPL's own behaviour is tested without the Whiteboard. */
+/** A port over a Map, so the REPL's own behaviour is tested without a real store. */
 class MapPort implements SessionBoardPort {
   public readonly boards = new Map<string, Map<string, unknown>>();
   public readonly saved = new Map<string, Map<string, unknown>>();

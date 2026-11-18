@@ -95,8 +95,8 @@ const strictRuntime = () =>
 
 describe('parseToolArguments', () => {
   it('a repeated flag records every value, in order — not the last alone', () => {
-    // `defect.open --scope a.ts --scope b.ts` recorded one scope and reported success
-    // (d-20260910-a-repeated-cli-flag-silently-keeps): the second assignment overwrote the first.
+    // `cmd --scope a.ts --scope b.ts` recorded one scope and reported success:
+    // the second assignment overwrote the first.
     const { input } = parseToolArguments([
       'defect.open',
       '--scope',
@@ -171,10 +171,10 @@ describe('parseToolArguments', () => {
       const path = join(dir, 'payload.json');
       writeFileSync(
         path,
-        JSON.stringify({ title: "founder's own `AgentDispatchPort`" }),
+        JSON.stringify({ title: "operator's own `DispatchPort`" }),
       );
       const { input } = parseToolArguments(['op', '--json-file', path]);
-      expect(input['title']).toBe("founder's own `AgentDispatchPort`");
+      expect(input['title']).toBe("operator's own `DispatchPort`");
     });
 
     it('strips a leading UTF-8 byte-order-mark, which --json can never carry (QA)', () => {
@@ -297,7 +297,7 @@ describe('unknown input keys', () => {
   });
 
   /**
-   * 🔴 `validate: () => ({})` is how a no-argument operation says so. `skill.seed --force true`
+   * 🔴 `validate: () => ({})` is how a no-argument operation says so. `seed --force true`
    * used to succeed while ignoring the flag entirely; six such operations now declare an empty
    * hook for exactly this.
    */
@@ -659,15 +659,14 @@ describe('the REPL loop', () => {
  * A sequence that stopped part-way is not a success, and the envelope had no way to say so.
  *
  * 🔴 **The runtime derived `status: 'success'` from "the handler did not throw."** Every resumable
- * `scm` sequence — `branch.open`, `branch.close`, `phase.close`, `feature.close`, `cascade.run` —
- * returns normally when a step refuses, carrying `complete: false` and the step it stopped at. So a
+ * multi-step sequence returns normally when a step refuses, carrying `complete: false` and the step it stopped at. So a
  * nine-step close-out that executed three steps and refused the fourth reported
  * `status: 'success', exitCode: 0`, and a caller reading either was told it had finished.
  *
  * Observed twice on 2026-09-08, on two different operations, which is what localised the fault to
- * the runtime rather than to either handler: `scm.branch.open` refused its cut against a dirty tree
- * and created no branch, and `scm.phase.close` refused a malformed review artifact and opened no
- * pull request. Both exited 0. `d-20260908-scm-branch-open-exits-0-with`.
+ * the runtime rather than to either handler: one refused its first step against a dirty tree
+ * and created no branch, and another refused a malformed artifact and opened no
+ * pull request. Both exited 0.
  *
  * ⚠️ **`success` and `error` were two values for three outcomes** — finished, failed, and stopped
  * part-way and resumable. The third needs a different response from a caller: a failure wants

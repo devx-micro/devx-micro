@@ -1,10 +1,9 @@
 /**
- * Content IDs — ADR-072 D3.
+ * Content IDs.
  *
  * `1-<32 hex>`: the first 32 hex characters of SHA-256. The leading `1` is the **format version of
- * the ID scheme**, not a record revision — the Domain Event log is append-only, so a record is never
- * revised. The shape is that of `Revision` in `@typedblite/content-revision`, so `generationOf`
- * and `digestOf` parse it, but the hash input differs (see `canonical-json.ts`).
+ * the ID scheme**, not a record revision — an event log is append-only, so a record is never
+ * revised. The shape matches a `generation-digest` revision string, but the hash input differs (see `canonical-json.ts`).
  *
  * Text is hashed over its exact UTF-8 bytes, with no JSON quoting and no normalisation: Markdown
  * whitespace can be significant, and an ID must identify the text a model actually received. The one
@@ -19,6 +18,7 @@ import { createHash } from 'node:crypto';
 
 import { assertWellFormedText, canonicalJson } from './canonical-json';
 
+/** `1-` followed by 32 hex characters: the leading SHA-256 digest of some content. Names bytes, not a type. */
 export type ContentId = string;
 
 const DIGEST_LENGTH = 32;
@@ -57,7 +57,7 @@ export function parseContentId(id: string): {
     );
   if (match[1] !== '1') {
     throw new Error(
-      `Unsupported content id generation ${match[1]}: only generation 1 exists (ADR-072 D3)`,
+      `Unsupported content id generation ${match[1]}: only generation 1 exists`,
     );
   }
   return { generation: 1, digest: match[2] };

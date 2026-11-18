@@ -3,7 +3,7 @@ import { parseToolArguments } from './cqrs-tool-runtime';
 import { VARIABLE_NAME } from './session-board';
 
 /**
- * The REPL's line language (ADR-066 D7), kept apart from the readline loop so it can be tested
+ * The REPL's line language, kept apart from the readline loop so it can be tested
  * without a terminal.
  *
  * 🔴 **References are resolved AFTER the line is tokenised, and each becomes exactly one value.**
@@ -78,7 +78,7 @@ export function parseReplCommand(
   return { kind: 'operation', line: trimmed };
 }
 
-/** `$name`, then any `.segment` or `[index]` (ADR-066 D7: dot and index segments only). */
+/** `$name`, then any `.segment` or `[index]` (dot and index segments only). */
 const REFERENCE = new RegExp(
   `^\\$(${VARIABLE_NAME.source.slice(1, -1)})((?:\\.[A-Za-z0-9_-]+|\\[\\d+\\])*)$`,
 );

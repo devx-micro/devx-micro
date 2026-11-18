@@ -7,8 +7,8 @@ import type {
 } from './contracts';
 
 /**
- * ADR-064 D7: `ToolOperationDescriptor` gains an OPTIONAL `inputSchema` — a plain structural type, so
- * this `scope:shared` library imports nothing from `agents-application`. Compile-time claims here are
+ * `ToolOperationDescriptor` has an OPTIONAL `inputSchema` — a plain structural type, so
+ * this shared library imports nothing from the agent layer. Compile-time claims here are
  * checked by `tsc -p tsconfig.spec.json`; the runtime claims by vitest.
  */
 describe('ToolOperationDescriptor.inputSchema', () => {

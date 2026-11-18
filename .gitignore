@@ -12,3 +12,5 @@ apps/**/src/**/*.d.ts
 
 .claude/worktrees
 .claude/settings.local.json
+# Generated TypeDoc output
+docs/api/

@@ -78,7 +78,7 @@ const ops: ToolOperationDescriptor[] = [
     createRequest: () => ({}),
   },
   {
-    name: 'skill.step.start',
+    name: 'workflow.step.start',
     summary: 's',
     kind: 'command',
     observationKind: 'workflow-step',
@@ -105,7 +105,7 @@ function make(
     commandBus: bus,
     queryBus: bus,
     operations: ops,
-    ...(recorder ? { recorder, clock: clock(), operator: 'mvp' } : {}),
+    ...(recorder ? { recorder, clock: clock(), operator: 'my-tool' } : {}),
   });
   return {
     runtime,
@@ -116,7 +116,7 @@ function make(
   };
 }
 
-describe('CqrsToolRuntime observes every dispatch it was given a recorder for (ADR-072 D7)', () => {
+describe('CqrsToolRuntime observes every dispatch it was given a recorder for', () => {
   it('records one observation for a successful operation, with timestamps and a monotonic duration', async () => {
     const recorder = new CollectingRecorder();
     const { dispatch } = make(recorder);
@@ -125,7 +125,7 @@ describe('CqrsToolRuntime observes every dispatch it was given a recorder for (A
     expect(recorder.seen).toHaveLength(1);
     expect(recorder.seen[0]).toMatchObject({
       kind: 'operation',
-      operator: 'mvp',
+      operator: 'my-tool',
       operation: 'demo.ok',
       beforeTimestamp: '2026-10-12T12:00:00.000Z',
       afterTimestamp: '2026-10-12T12:00:01.000Z',
@@ -186,14 +186,14 @@ describe('CqrsToolRuntime observes every dispatch it was given a recorder for (A
     expect(recorder.seen).toEqual([]);
   });
 
-  it("records the descriptor's own kind (skill.step.* are workflow steps, not plain operations)", async () => {
+  it("records the descriptor's own kind (workflow.step.* are workflow steps, not plain operations)", async () => {
     const recorder = new CollectingRecorder();
     const { dispatch } = make(recorder);
-    await dispatch('skill.step.start');
+    await dispatch('workflow.step.start');
     expect(recorder.seen[0]?.kind).toBe('workflow-step');
   });
 
-  it('never records an argument VALUE (ADR-072 D9): only the names of the keys and the correlation id', async () => {
+  it('never records an argument VALUE: only the names of the keys and the correlation id', async () => {
     const recorder = new CollectingRecorder();
     const { dispatch } = make(recorder);
     await dispatch('demo.needs', { id: 'hunter2hunter2' });
@@ -206,7 +206,7 @@ describe('CqrsToolRuntime observes every dispatch it was given a recorder for (A
     });
   });
 
-  it('never lets the recorder change the result: a throw or a rejection leaves the envelope untouched (ADR-072 D7)', async () => {
+  it('never lets the recorder change the result: a throw or a rejection leaves the envelope untouched', async () => {
     for (const recorder of [
       {
         record: () => {
@@ -252,7 +252,7 @@ describe('CqrsToolRuntime observes every dispatch it was given a recorder for (A
     expect(order).toEqual(['recorded', 'answered']);
   });
 
-  it('stops waiting for a recorder that never settles, and answers anyway (ADR-072 D7)', async () => {
+  it('stops waiting for a recorder that never settles, and answers anyway', async () => {
     const hung: Recorder = { record: () => new Promise(() => undefined) };
     const bus = new Bus(async () => ({ fine: true }));
     const runtime = new CqrsToolRuntime({
@@ -595,7 +595,7 @@ describe('CqrsToolRuntime observes every dispatch it was given a recorder for (A
   });
 });
 
-describe('an operation that records its own completion (ADR-072 D4a: a more specific kind replaces the runtime event, never adds one)', () => {
+describe('an operation that records its own completion (a more specific kind replaces the runtime event, never adds one)', () => {
   it('adds no generic event when it succeeds, because its handler recorded the one completion', async () => {
     const recorder = new CollectingRecorder();
     const { dispatch } = make(recorder);

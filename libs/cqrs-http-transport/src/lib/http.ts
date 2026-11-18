@@ -8,12 +8,9 @@ import {
 /**
  * The HTTP half of the transport contract: an envelope, as a response or a thrown status.
  *
- * 🔴 **One copy, in a Nest-dependent library of its own** — ADR-027 Decision 9, exercised. The
- * decision left the HTTP rendering duplicated across `data-store` and `mvp` and said *revisit at a
- * third consumer*; `defects` is the third (d-20260912-the-defects-http-dispatch-route-accepts), and
- * three copies of the status mapping is how one transport comes to answer 500 where the CLI
- * answers exit code 2. It is not in `cqrs-tool-runtime`, which stays Nest-free on purpose — D9's
- * rejected alternative.
+ * 🔴 **One copy, in a Nest-dependent library of its own**. Duplicating the HTTP
+ * rendering across apps is how one transport comes to answer 500 where the CLI answers exit code 2.
+ * It is not in `cqrs-tool-runtime`, which stays Nest-free on purpose.
  */
 
 /** The envelope's `exitCode`, as an HTTP status. */

@@ -1,9 +1,9 @@
 /**
- * Inference run records — ADR-073. Pure: types, validators and the decision rule, no I/O.
+ * Inference run records. Pure: types, validators and the decision rule, no I/O.
  *
  * A run is a contract, a sequence of iterations and an overall result. The contract and every iteration are
- * stored by content id in the ADR-072 payload store; the overall result is an ordinary observation of kind
- * `inference-run` whose `detail` is `InferenceRunDetail` (D7a).
+ * stored by content id in the payload store; the overall result is an ordinary observation of kind
+ * `inference-run` whose `detail` is `InferenceRunDetail`.
  */
 import { canonicalJson } from './canonical-json';
 import { isContentId, type ContentId } from './content-id';
@@ -13,10 +13,9 @@ import { requirementId } from './requirement';
 export const INFERENCE_SCHEMA_VERSION = 1;
 
 /**
- * 🔴 **The one switch for enforcement.** ADR-073 D2/D8 say a duplicate-requirement or contract-incomplete run is
- * refused before dispatch. The founder ruled on 2026-10-10 (Phase 04) to OBSERVE those runs first: they still
- * dispatch and are recorded as `failure` with the error class as evidence. `'refuse'` restores the ADR text.
- * ADR-073 needs a short amendment (authored on dev, ADR-030) before `'refuse'` is the default again.
+ * 🔴 **The one switch for enforcement.** By design, a duplicate-requirement or contract-incomplete run is
+ * refused before dispatch (`'refuse'`). The default is to OBSERVE those runs first: they still dispatch and are
+ * recorded as `failure` with the error class as evidence.
  */
 export type ContractEnforcement = 'observe' | 'refuse';
 export const DEFAULT_CONTRACT_ENFORCEMENT: ContractEnforcement = 'observe';
@@ -30,16 +29,16 @@ export type EvaluatorKind = (typeof EVALUATOR_KINDS)[number];
 export interface Evaluator {
   readonly kind: EvaluatorKind;
   readonly identity: string;
-  /** True only when `kind` is `model` and the identity is the model that produced the output (D3). */
+  /** True only when `kind` is `model` and the identity is the model that produced the output. */
   readonly selfEvaluated: boolean;
 }
 
 export interface EvaluationEntry {
   readonly requirementId: ContentId;
   readonly verdict: Verdict;
-  /** A content id or a short factual statement; required for `met` and `not-met` (D4). */
+  /** A content id or a short factual statement; required for `met` and `not-met`. */
   readonly evidence?: string;
-  /** Omitted for `not-evaluated` (D3). */
+  /** Omitted for `not-evaluated`. */
   readonly evaluator?: Evaluator;
 }
 
@@ -52,7 +51,7 @@ export interface EvaluationSummary {
 export const ITERATION_DECISIONS = ['accepted', 'rejected'] as const;
 export type IterationDecision = (typeof ITERATION_DECISIONS)[number];
 
-/** Why an iteration was decided as it was; `unevaluable` is the code ADR-073 D3 names. */
+/** Why an iteration was decided as it was; `unevaluable` is the code for a run with nothing evaluable. */
 export const DECISION_REASONS = [
   'no-unmet-requirement',
   'requirement-not-met',
@@ -72,7 +71,7 @@ export interface AssumptionRecord {
   readonly origin: (typeof ASSUMPTION_ORIGINS)[number];
 }
 
-/** ADR-073 D2. Its content id is the `contractRef`, shared by every run that uses it. */
+/** Its content id is the `contractRef`, shared by every run that uses it. */
 export interface ContractRecord {
   readonly schemaVersion: typeof INFERENCE_SCHEMA_VERSION;
   readonly role: string;
@@ -87,7 +86,6 @@ export interface ContractRecord {
   readonly withheld?: Readonly<Record<string, string>>;
 }
 
-/** ADR-073 D3. */
 export interface IterationRecord {
   readonly schemaVersion: typeof INFERENCE_SCHEMA_VERSION;
   readonly kind: 'inference-run';
@@ -106,7 +104,7 @@ export interface IterationRecord {
   readonly withheld?: Readonly<Record<string, string>>;
 }
 
-/** ADR-073 D7a: the part of the completion record that lives in `detail`. */
+/** the part of the completion record that lives in `detail`. */
 export interface InferenceRunDetail {
   readonly contractRef: ContentId;
   readonly iterationRefs: readonly ContentId[];
@@ -116,7 +114,7 @@ export interface InferenceRunDetail {
   readonly contractComplete: boolean;
   /** That of the final iteration; omitted when no iteration ran. */
   readonly partial?: boolean;
-  /** Token counts, present only when the harness reported them for a run outside our dispatch port (ADR-072 D8). Never `0` for "unknown". */
+  /** Token counts, present only when the harness reported them for a run outside our dispatch port. Never `0` for "unknown". */
   readonly usage?: {
     readonly inputTokens?: number;
     readonly outputTokens?: number;
@@ -137,7 +135,7 @@ export function summarizeEvaluation(
   return { met, notMet, notEvaluated };
 }
 
-/** ADR-073 D6: `met / (met + notMet)`, omitted when that denominator is 0. */
+/** `met / (met + notMet)`, omitted when that denominator is 0. */
 export function derivedConfidence(
   summary: EvaluationSummary,
 ): number | undefined {
@@ -154,7 +152,7 @@ export interface IterationDecisionResult {
 }
 
 /**
- * ADR-073 D5a. Accepted when, and only when, no requirement is `not-met` and at least one is `met`. Anything else
+ * Accepted when, and only when, no requirement is `not-met` and at least one is `met`. Anything else
  * is rejected: with every requirement `not-evaluated` the reason is `unevaluable`, and with no requirement at all
  * it is `no-requirements` (an incomplete contract, D8). `partial` is true for any `not-evaluated` entry.
  */
@@ -254,7 +252,7 @@ const CONTRACT_FIELDS = [
   'withheld',
 ];
 
-/** Every violation of the ADR-073 D2 rules a type cannot express; an empty list means valid and hashable. Never throws. */
+/** Every violation of the contract rules a type cannot express; an empty list means valid and hashable. Never throws. */
 export function validateContract(input: unknown): readonly string[] {
   return validated(input, (value) => {
     if (!isPlainRecord(value)) return ['the contract must be an object'];
@@ -299,9 +297,7 @@ export function validateContract(input: unknown): readonly string[] {
           );
         else {
           if (seen.has(item['requirementId']))
-            problems.push(
-              `duplicate requirementId ${item['requirementId']} (ADR-073 D2)`,
-            );
+            problems.push(`duplicate requirementId ${item['requirementId']}`);
           seen.add(item['requirementId']);
           try {
             if (requirementId(item['text']) !== item['requirementId'])
@@ -378,7 +374,7 @@ function entryProblems(item: unknown, index: number): string[] {
   if (verdict === 'not-evaluated') {
     if (evaluator !== undefined)
       problems.push(
-        `${where}.evaluator must be omitted for a not-evaluated entry (ADR-073 D3)`,
+        `${where}.evaluator must be omitted for a not-evaluated entry`,
       );
     if (item['evidence'] !== undefined && !isNonEmpty(item['evidence']))
       problems.push(`${where}.evidence must be a non-empty string, or omitted`);
@@ -386,7 +382,7 @@ function entryProblems(item: unknown, index: number): string[] {
   }
   if (!isNonEmpty(item['evidence']))
     problems.push(
-      `${where}.evidence is required for a ${String(verdict)} verdict (ADR-073 D4)`,
+      `${where}.evidence is required for a ${String(verdict)} verdict`,
     );
   if (!isPlainRecord(evaluator))
     problems.push(
@@ -410,13 +406,13 @@ function entryProblems(item: unknown, index: number): string[] {
       problems.push(`${where}.evaluator.selfEvaluated must be a boolean`);
     else if (evaluator['selfEvaluated'] && evaluator['kind'] !== 'model')
       problems.push(
-        `${where}.evaluator.selfEvaluated is true only when kind is model (ADR-073 D3)`,
+        `${where}.evaluator.selfEvaluated is true only when kind is model`,
       );
   }
   return problems;
 }
 
-/** Every violation of the ADR-073 D3 to D6 rules, including that the summary, partial flag, confidence and decision agree with the entries. Never throws. */
+/** Every violation of the iteration rules, including that the summary, partial flag, confidence and decision agree with the entries. Never throws. */
 export function validateIteration(input: unknown): readonly string[] {
   return validated(input, (value) => {
     if (!isPlainRecord(value)) return ['the iteration must be an object'];
@@ -462,7 +458,7 @@ export function validateIteration(input: unknown): readonly string[] {
     for (const entry of entries) {
       if (seen.has(entry.requirementId))
         problems.push(
-          `duplicate requirementId ${entry.requirementId} in evaluation (ADR-073 D2)`,
+          `duplicate requirementId ${entry.requirementId} in evaluation`,
         );
       seen.add(entry.requirementId);
     }
@@ -481,9 +477,7 @@ export function validateIteration(input: unknown): readonly string[] {
         'partial does not match the evaluation entries (true when any requirement is not-evaluated)',
       );
     if (value['decision'] !== expected.decision)
-      problems.push(
-        `decision must be ${expected.decision} for these entries (ADR-073 D5a)`,
-      );
+      problems.push(`decision must be ${expected.decision} for these entries`);
     if (value['reason'] !== expected.reason)
       problems.push(`reason must be ${expected.reason} for these entries`);
     const confidence = value['confidence'];
@@ -492,7 +486,7 @@ export function validateIteration(input: unknown): readonly string[] {
       JSON.stringify(expected.confidence ?? null)
     ) {
       problems.push(
-        'confidence must be the derived ratio and nothing else (ADR-073 D6), omitted when nothing was decided',
+        'confidence must be the derived ratio and nothing else, omitted when nothing was decided',
       );
     }
     return problems;
@@ -520,7 +514,7 @@ export interface CompletedRun {
 }
 
 /**
- * ADR-073 D7a, D8: the overall result. An incomplete contract (or a duplicate requirement) can never be accepted, so
+ * the overall result. An incomplete contract (or a duplicate requirement) can never be accepted, so
  * the run is a `failure` whose first evidence is the error class, whatever the iteration decided. Otherwise a run is a
  * `success` exactly when its last iteration was accepted. `iterations` and `partial` are omitted when no iteration ran.
  */

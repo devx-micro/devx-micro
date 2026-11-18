@@ -175,7 +175,7 @@ describe('input validation', () => {
 
     // 🔴 A caller error, not a server error. A string or array where the input object should be —
     // `{"input": "nope"}` over HTTP or the sidecar — used to reach `probeInput`'s Proxy and surface
-    // as HANDLER_FAILURE at exit 1 / HTTP 500 (d-20260912-cqrstoolruntime-dispatch-answers-a-non-object).
+    // as HANDLER_FAILURE at exit 1 / HTTP 500.
     it.each([
       ['a string', 'nope'],
       ['an array', ['nope']],

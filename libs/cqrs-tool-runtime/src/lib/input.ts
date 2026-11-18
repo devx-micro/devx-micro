@@ -3,15 +3,13 @@ import { TOOL_EXIT_CODES, ToolRuntimeError } from './contracts';
 /**
  * Input validation for a `ToolOperationDescriptor`'s `validate` hook.
  *
- * 🔴 **These exist because four contexts coerced instead of validating.** `scm`, `skills`,
- * `workflow` and `workflow-engine` each carried a local
+ * 🔴 **These exist because several contexts coerced instead of validating.** Each carried a local
  * `str(input, key, fallback)` that returned the fallback for a missing key — so
  * `str(input, 'promotionId', '')` turned *"you forgot the promotion id"* into an empty string that
  * failed somewhere downstream, in a message naming neither the key nor the operation. An empty
  * fallback was the author's way of writing "required", and nothing enforced it.
  *
- * `graph-store` and `document-store` were written later and hand-rolled these same helpers, twice,
- * with `mvp` making a third partial copy. Six copies of one idea is the trigger to extract it.
+ * Later modules hand-rolled these same helpers again. Many copies of one idea is the trigger to extract it.
  *
  * 🔴 **Every failure is `INVALID_INPUT` at exit 2.** A caller branching on `error.code` must be able
  * to tell "you typed it wrong" from "the store broke", and a usage error must not look like a
@@ -116,7 +114,7 @@ export function probeInput(received: Record<string, unknown>): InputProbe {
  *
  * 🔴 **Silently dropping an unknown key lets a typo change what the command does.** `validate`
  * builds a fresh object from the keys it knows, so anything else the caller typed was discarded
- * without a word: `skill.push --skill x --invocation 1 --parentWorkflowId w --parentStepId s`
+ * without a word: `item.push --item x --parentId w`
  * (the *command class's* field names, not the *operation's* argument names) ran as a **root** push
  * and reported success. That reads exactly like the nesting check failing to fire, and it cost a
  * debugging pass before the flags — not the code — turned out to be wrong.

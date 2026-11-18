@@ -1,6 +1,6 @@
 import { normalizeRequirementText, requirementId } from './requirement';
 
-describe('requirement identity (ADR-072 D3, ADR-073 D2)', () => {
+describe('requirement identity', () => {
   it('normalises layout but keeps line breaks', () => {
     expect(
       normalizeRequirementText(

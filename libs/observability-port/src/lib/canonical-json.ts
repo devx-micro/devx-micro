@@ -1,5 +1,5 @@
 /**
- * RFC 8785 JSON Canonicalization Scheme — ADR-072 D3.
+ * RFC 8785 JSON Canonicalization Scheme.
  *
  * Why this exists rather than `computeRevision`: that function hashes an `EntityState`, which
  * `canonical.ts` restricts to string attributes and roles, so a nested observation record (arrays,
@@ -12,7 +12,7 @@
  * and a refusal of everything that has no JSON form: this function throws where `JSON.stringify` would
  * silently coerce or emit `null` (NaN, Infinity, `undefined` in an array, holes), because a hash input that quietly changes shape is an
  * integrity hole, not a convenience. The one deliberate exception is an object member whose value is
- * `undefined`: it is an absent field (ADR-072 D5, "absent is not zero") and is omitted, so `{a: undefined}`
+ * `undefined`: it is an absent field ("absent is not zero") and is omitted, so `{a: undefined}`
  * and `{}` are the same record.
  */
 
