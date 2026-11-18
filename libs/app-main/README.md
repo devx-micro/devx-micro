@@ -29,21 +29,28 @@ const app = defineApp({
 // The in-process entry points, for tests and for other code that embeds the app.
 export const { runCli, runRepl, runSidecar, runApi } = app;
 
-if (require.main === module) void app.main();
+if (require.main === module) {
+  // An error that is not an operator error is rethrown from the long-running modes, as a bug should
+  // be. Without this catch it becomes an unhandled rejection: Node prints the stack and exits 1.
+  app.main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
 ```
 
 ### What `main` does
 
-| `argv`                         | Mode                              |
-| ------------------------------ | --------------------------------- |
-| an unrecognised `--flag` first | refused by name, exit code 2      |
-| contains `--repl`              | REPL                              |
-| contains `--sidecar`           | JSON-lines sidecar                |
-| contains an extra mode's flag  | that mode                         |
-| empty                          | HTTP API (the help text if none)  |
-| anything else                  | one-shot CLI (`--cli` is ignored) |
+| `argv`                        | Mode                              |
+| ----------------------------- | --------------------------------- |
+| an unrecognised flag first    | refused by name, exit code 2      |
+| contains `--repl`             | REPL                              |
+| contains `--sidecar`          | JSON-lines sidecar                |
+| contains an extra mode's flag | that mode                         |
+| empty                         | HTTP API (the help text if none)  |
+| anything else                 | one-shot CLI (`--cli` is ignored) |
 
-An unrecognised `--flag` is refused rather than falling through, because otherwise a typo such as `--repel` would reach the "no arguments" case and start a web server.
+An unrecognised leading flag is refused rather than falling through — `--repel` and `-x` alike — because otherwise a typo would reach the "no arguments" case and start a web server, or be run as an operation called `-x`. An operation name never starts with `-`, so nothing legitimate is refused. The standard flags `--cli`, `--help` and `-h` are accepted and run as a one-shot request.
 
 `main` sets `process.exitCode` and never calls `process.exit`, so a running server keeps the process alive and open handles drain.
 
@@ -53,15 +60,17 @@ An unrecognised `--flag` is refused rather than falling through, because otherwi
 
 ### HTTP
 
-`http.createApp` builds the Nest application, because only the application knows its module and `NestFactory` options. `defineApp` then sets the global prefix (`api` unless `globalPrefix` says otherwise), runs `http.configure` for CORS, body parsers and workers, and listens on `process.env[portEnv] || defaultPort`.
+`http.createApp(options, { port })` builds the Nest application, because only the application knows its module and `NestFactory` options. The port (`process.env[portEnv] || defaultPort`) is resolved first and handed to `createApp` and `configure`, for an application that needs it before it starts, such as to build its own public URL. `defineApp` then sets the global prefix (`api` unless `globalPrefix` says otherwise), runs `http.configure(app, options, { port })` for CORS, body parsers and workers, and listens.
+
+If `configure` or `listen` throws, the application is closed and the original error is rethrown, so a half-started app does not keep timers or sockets alive.
 
 ### Extra modes
 
 ```ts
 defineApp({
   // …
-  extraModes: [{ flag: '--hub', run: (options) => startHub(options) }],
+  extraModes: [{ flag: '--hub', run: (options, argv) => startHub(options, argv) }],
 });
 ```
 
-An extra mode is named in the unknown-mode message and handled like the REPL and the sidecar.
+An extra mode receives the options and the full `argv`, so it can parse flags of its own. It is named in the unknown-mode message and handled like the REPL and the sidecar: an operator error prints its message and exits 1, anything else is rethrown. A mode that needs another exit code sets `process.exitCode` itself. A flag that repeats a standard flag, or another extra mode's, makes `defineApp` throw when the app is defined.

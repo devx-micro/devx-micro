@@ -10,6 +10,10 @@ flowchart LR
   sidecar[app-sidecar] --> runtime
   http[app-http] --> runtime
   runtime --> obs[app-observability]
+  main[app-main] --> cli
+  main --> repl
+  main --> sidecar
+  main --> runtime
 ```
 
 A package may depend only on packages to its right (and on `@nestjs/*` and third-party packages).

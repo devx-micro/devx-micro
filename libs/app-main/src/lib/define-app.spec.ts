@@ -20,28 +20,44 @@ vi.mock('@devx-micro/app-sidecar', () => ({
 
 class OperatorError extends Error {}
 
+type Options = { tag: string };
+
 const runtime = { id: 'runtime' } as unknown as CqrsToolRuntime;
+
+/** Distinct objects, so swapping two arguments cannot pass a deep-equality assertion. */
+const stream = (id: string) => ({ id }) as never;
+
+/** Lets a test hold a promise open and release it, to assert what happens before and after. */
+function deferred<T = void>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => (resolve = done));
+  return { promise, resolve };
+}
 
 function fakeApp(address: unknown = { port: 4321 }) {
   const calls: string[] = [];
-  return {
-    calls,
-    app: {
-      setGlobalPrefix: (prefix: string) => calls.push(`prefix:${prefix}`),
-      listen: async (port: unknown) => {
-        calls.push(`listen:${String(port)}`);
-      },
-      getHttpServer: () => ({ address: () => address }),
-    },
+  const app = {
+    setGlobalPrefix: (prefix: string) => calls.push(`prefix:${prefix}`),
+    listen: vi.fn(async (port: unknown) => {
+      calls.push(`listen:${String(port)}`);
+    }),
+    close: vi.fn(async () => {
+      calls.push('close');
+    }),
+    getHttpServer: () => ({ address: () => address }),
   };
+  return { calls, app };
 }
 
-function build(overrides: Partial<AppDefinition<{ tag: string }>> = {}) {
+function build(overrides: Partial<AppDefinition<Options>> = {}) {
   const closed = vi.fn(async () => undefined);
-  const createTool = vi.fn(async () => ({ runtime, close: closed }));
+  const createTool = vi.fn(async (_options?: Options) => ({
+    runtime,
+    close: closed,
+  }));
   const http = fakeApp();
   const createApp = vi.fn(async () => http.app as never);
-  const app = defineApp<{ tag: string }>({
+  const app = defineApp<Options>({
     name: 'demo',
     createTool,
     http: { createApp, portEnv: 'DEMO_APP_MAIN_PORT', defaultPort: 3999 },
@@ -53,13 +69,17 @@ function build(overrides: Partial<AppDefinition<{ tag: string }>> = {}) {
 
 describe('defineApp', () => {
   let stderr: string;
+  let logged: string[];
   beforeEach(() => {
     stderr = '';
+    logged = [];
     vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
       stderr += String(chunk);
       return true;
     });
-    vi.spyOn(Logger, 'log').mockImplementation(() => undefined);
+    vi.spyOn(Logger, 'log').mockImplementation((message: unknown) => {
+      logged.push(String(message));
+    });
     process.exitCode = undefined;
     delete process.env['DEMO_APP_MAIN_PORT'];
     vi.mocked(runOneShot).mockClear().mockResolvedValue(0);
@@ -69,6 +89,28 @@ describe('defineApp', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     process.exitCode = undefined;
+  });
+
+  describe('definition', () => {
+    it('refuses an extra mode that repeats a standard flag', () => {
+      for (const flag of ['--repl', '--sidecar', '--cli', '--help'] as const) {
+        expect(() =>
+          build({ extraModes: [{ flag, run: async () => undefined }] }),
+        ).toThrow(`extra mode '${flag}' is already a mode`);
+      }
+    });
+
+    it('refuses two extra modes with the same flag', () => {
+      const run = async () => undefined;
+      expect(() =>
+        build({
+          extraModes: [
+            { flag: '--hub', run },
+            { flag: '--hub', run },
+          ],
+        }),
+      ).toThrow(`extra mode '--hub' is already a mode`);
+    });
   });
 
   describe('runCli', () => {
@@ -97,26 +139,61 @@ describe('defineApp', () => {
       expect(runOneShot).toHaveBeenCalledWith(runtime, ['a'], io);
     });
 
-    it('closes the tool when the transport throws, and rethrows', async () => {
+    it('closes the tool only after the transport has finished', async () => {
+      const { app, closed } = build();
+      const transport = deferred<number>();
+      vi.mocked(runOneShot).mockReturnValue(transport.promise);
+
+      const running = app.runCli(['x']);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(closed).not.toHaveBeenCalled();
+
+      transport.resolve(0);
+      await running;
+      expect(closed).toHaveBeenCalledTimes(1);
+    });
+
+    it('closes the tool when the transport throws, and rethrows that error', async () => {
       const { app, closed } = build();
       vi.mocked(runOneShot).mockRejectedValue(new Error('boom'));
 
       await expect(app.runCli(['x'])).rejects.toThrow('boom');
       expect(closed).toHaveBeenCalledTimes(1);
     });
+
+    it('reports the transport error, not the close error, when both fail', async () => {
+      const { app, closed } = build();
+      closed.mockRejectedValue(new Error('close failed'));
+      vi.mocked(runOneShot).mockRejectedValue(new Error('real failure'));
+
+      await expect(app.runCli(['x'])).rejects.toThrow('real failure');
+    });
+
+    it('reports a close failure when the transport succeeded', async () => {
+      const { app, closed } = build();
+      closed.mockRejectedValue(new Error('close failed'));
+
+      await expect(app.runCli(['x'])).rejects.toThrow('close failed');
+    });
   });
 
   describe('runRepl and runSidecar', () => {
-    it('hand the runtime and streams to their transports and close the tool afterwards', async () => {
+    it('hand the runtime and each stream, in order, to their transports and close the tool afterwards', async () => {
       const { app, closed } = build();
-      const input = {} as never;
-      const output = {} as never;
+      const input = stream('input');
+      const output = stream('output');
 
-      await app.runRepl(input, output);
-      await app.runSidecar(input, output);
+      await app.runRepl(input, output, { tag: 'r' });
+      await app.runSidecar(input, output, { tag: 's' });
 
-      expect(runInteractiveRepl).toHaveBeenCalledWith(runtime, input, output);
-      expect(runJsonLinesDriver).toHaveBeenCalledWith(runtime, input, output);
+      const repl = vi.mocked(runInteractiveRepl).mock.calls[0]!;
+      const sidecar = vi.mocked(runJsonLinesDriver).mock.calls[0]!;
+      expect(repl[0]).toBe(runtime);
+      expect(repl[1]).toBe(input);
+      expect(repl[2]).toBe(output);
+      expect(sidecar[0]).toBe(runtime);
+      expect(sidecar[1]).toBe(input);
+      expect(sidecar[2]).toBe(output);
       expect(closed).toHaveBeenCalledTimes(2);
     });
 
@@ -130,13 +207,13 @@ describe('defineApp', () => {
   });
 
   describe('runApi', () => {
-    it('sets the prefix, then configures, then listens on the default port', async () => {
-      const configure = vi.fn(() => {
-        http.calls.push('configure');
-      });
+    it('resolves the port before building the app, and gives both factories the same context', async () => {
+      process.env['DEMO_APP_MAIN_PORT'] = '5555';
+      const configure = vi.fn();
+      const createApp = vi.fn(async () => http.app as never);
       const { app, http } = build({
         http: {
-          createApp: async () => http.app as never,
+          createApp,
           portEnv: 'DEMO_APP_MAIN_PORT',
           defaultPort: 3999,
           configure,
@@ -145,8 +222,60 @@ describe('defineApp', () => {
 
       await app.runApi({ tag: 'o' });
 
+      expect(createApp).toHaveBeenCalledWith({ tag: 'o' }, { port: '5555' });
+      expect(configure).toHaveBeenCalledWith(
+        http.app,
+        { tag: 'o' },
+        { port: '5555' },
+      );
+    });
+
+    it('sets the prefix, then configures, then listens on the default port', async () => {
+      const { app, http } = build({
+        http: {
+          createApp: async () => http.app as never,
+          portEnv: 'DEMO_APP_MAIN_PORT',
+          defaultPort: 3999,
+          configure: () => {
+            http.calls.push('configure');
+          },
+        },
+      });
+
+      await app.runApi();
+
       expect(http.calls).toEqual(['prefix:api', 'configure', 'listen:3999']);
-      expect(configure).toHaveBeenCalledWith(http.app, { tag: 'o' });
+    });
+
+    it('waits for an asynchronous configure before listening, and for listen before resolving', async () => {
+      const configuring = deferred();
+      const listening = deferred();
+      const { app, http } = build({
+        http: {
+          createApp: async () => http.app as never,
+          portEnv: 'DEMO_APP_MAIN_PORT',
+          defaultPort: 3999,
+          configure: () => configuring.promise,
+        },
+      });
+      http.app.listen.mockImplementation(async () => {
+        http.calls.push('listen');
+        await listening.promise;
+      });
+      let settled = false;
+
+      const running = app.runApi().then(() => (settled = true));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(http.calls).not.toContain('listen');
+
+      configuring.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(http.calls).toContain('listen');
+      expect(settled).toBe(false);
+
+      listening.resolve();
+      await running;
+      expect(settled).toBe(true);
     });
 
     it('lets the environment override the port, and honours a custom prefix', async () => {
@@ -174,6 +303,37 @@ describe('defineApp', () => {
       expect(http.calls).toContain('listen:3999');
     });
 
+    it('logs the port the server is actually on, with the default help path', async () => {
+      const { app, http } = build();
+      http.app.getHttpServer = () => ({ address: () => ({ port: 4321 }) });
+
+      await app.runApi();
+
+      expect(logged).toEqual([
+        'demo is serving on: http://localhost:4321/api/demo/help',
+      ]);
+    });
+
+    it('logs a custom help path and prefix, and falls back to the requested port for a socket address', async () => {
+      process.env['DEMO_APP_MAIN_PORT'] = '5555';
+      const { app, http } = build({
+        http: {
+          createApp: async () => http.app as never,
+          portEnv: 'DEMO_APP_MAIN_PORT',
+          defaultPort: 3999,
+          globalPrefix: 'v1',
+          helpPath: '/v1/status',
+        },
+      });
+      http.app.getHttpServer = () => ({ address: () => '/tmp/app.sock' });
+
+      await app.runApi();
+
+      expect(logged).toEqual([
+        'demo is serving on: http://localhost:5555/v1/status',
+      ]);
+    });
+
     it('resolves to the application it started', async () => {
       const { app, http } = build();
       expect(await app.runApi()).toBe(http.app);
@@ -183,21 +343,58 @@ describe('defineApp', () => {
       const { app } = build({ http: undefined });
       await expect(app.runApi()).rejects.toThrow('demo has no HTTP mode');
     });
+
+    it('closes the application and rethrows the original error when configure fails', async () => {
+      const { app, http } = build({
+        http: {
+          createApp: async () => http.app as never,
+          portEnv: 'DEMO_APP_MAIN_PORT',
+          defaultPort: 3999,
+          configure: () => {
+            throw new Error('bad config');
+          },
+        },
+      });
+
+      await expect(app.runApi()).rejects.toThrow('bad config');
+      expect(http.app.close).toHaveBeenCalledTimes(1);
+      expect(http.app.listen).not.toHaveBeenCalled();
+    });
+
+    it('closes the application and rethrows the original error when listen fails, even if close fails too', async () => {
+      const { app, http } = build();
+      http.app.listen.mockRejectedValue(new Error('EADDRINUSE'));
+      http.app.close.mockRejectedValue(new Error('close failed'));
+
+      await expect(app.runApi()).rejects.toThrow('EADDRINUSE');
+      expect(http.app.close).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not log when it did not start', async () => {
+      const { app, http } = build();
+      http.app.listen.mockRejectedValue(new Error('EADDRINUSE'));
+
+      await expect(app.runApi()).rejects.toThrow();
+      expect(logged).toEqual([]);
+    });
   });
 
   describe('main', () => {
-    it('refuses an unrecognised --flag by name, exit 2, without building a tool or a server', async () => {
-      const { app, createTool, createApp } = build();
+    it.each(['--repel', '-x', '-'])(
+      'refuses an unrecognised leading flag %s by name, exit 2, without building a tool or a server',
+      async (flag) => {
+        const { app, createTool, createApp } = build();
 
-      await app.main(['--repel']);
+        await app.main([flag]);
 
-      expect(stderr).toBe(
-        "demo: unknown mode '--repel'. Modes are --repl, --sidecar, --cli, or none for the HTTP API.\n",
-      );
-      expect(process.exitCode).toBe(2);
-      expect(createTool).not.toHaveBeenCalled();
-      expect(createApp).not.toHaveBeenCalled();
-    });
+        expect(stderr).toBe(
+          `demo: unknown mode '${flag}'. Modes are --repl, --sidecar, --cli, or none for the HTTP API.\n`,
+        );
+        expect(process.exitCode).toBe(2);
+        expect(createTool).not.toHaveBeenCalled();
+        expect(createApp).not.toHaveBeenCalled();
+      },
+    );
 
     it('names extra modes in that message, and omits the HTTP clause when there is no HTTP mode', async () => {
       const { app } = build({
@@ -212,42 +409,85 @@ describe('defineApp', () => {
       );
     });
 
-    it('accepts every standard flag as a known mode', async () => {
-      const { app } = build();
-      for (const flag of ['--cli', '--help']) {
-        stderr = '';
+    it.each([['--cli'], ['--help'], ['-h']])(
+      'runs %s as a one-shot request rather than refusing it or starting a server',
+      async (flag) => {
+        const { app, createApp } = build();
+
         await app.main([flag]);
+
         expect(stderr).toBe('');
-      }
-      await app.main(['-h']);
-      expect(stderr).toBe('');
+        expect(runOneShot).toHaveBeenCalledTimes(1);
+        expect(createApp).not.toHaveBeenCalled();
+      },
+    );
+
+    it('runs a lone --cli as a one-shot with no operation', async () => {
+      const { app } = build();
+
+      await app.main(['--cli']);
+
+      expect(runOneShot).toHaveBeenCalledWith(runtime, []);
     });
 
-    it('starts the REPL and the sidecar', async () => {
+    it('does not refuse a flag that is not first, and a flag later in argv still selects its mode', async () => {
       const { app } = build();
 
-      await app.main(['--repl']);
-      await app.main(['--sidecar']);
+      await app.main(['x', '--repl']);
+
+      expect(stderr).toBe('');
+      expect(runInteractiveRepl).toHaveBeenCalledTimes(1);
+    });
+
+    it('starts the REPL and the sidecar, passing options to the tool factory', async () => {
+      const { app, createTool } = build();
+
+      await app.main(['--repl'], { tag: 'a' });
+      await app.main(['--sidecar'], { tag: 'b' });
 
       expect(runInteractiveRepl).toHaveBeenCalledTimes(1);
       expect(runJsonLinesDriver).toHaveBeenCalledTimes(1);
+      expect(createTool.mock.calls.map(([options]) => options)).toEqual([
+        { tag: 'a' },
+        { tag: 'b' },
+      ]);
     });
 
-    it('runs an extra mode', async () => {
+    it('prefers the REPL when both --repl and --sidecar are given', async () => {
+      const { app } = build();
+
+      await app.main(['--sidecar', '--repl']);
+
+      expect(runInteractiveRepl).toHaveBeenCalledTimes(1);
+      expect(runJsonLinesDriver).not.toHaveBeenCalled();
+    });
+
+    it('prefers the REPL over an extra mode when both are given', async () => {
       const run = vi.fn(async () => undefined);
       const { app } = build({ extraModes: [{ flag: '--hub', run }] });
 
-      await app.main(['--hub'], { tag: 'h' });
+      await app.main(['--hub', '--repl']);
 
-      expect(run).toHaveBeenCalledWith({ tag: 'h' });
+      expect(runInteractiveRepl).toHaveBeenCalledTimes(1);
+      expect(run).not.toHaveBeenCalled();
     });
 
-    it('starts the HTTP API when there are no arguments', async () => {
-      const { app, http } = build();
+    it('runs an extra mode with the options and the full argv', async () => {
+      const run = vi.fn(async () => undefined);
+      const { app } = build({ extraModes: [{ flag: '--hub', run }] });
 
-      await app.main([]);
+      await app.main(['--hub', '--port', '9'], { tag: 'h' });
+
+      expect(run).toHaveBeenCalledWith({ tag: 'h' }, ['--hub', '--port', '9']);
+    });
+
+    it('starts the HTTP API when there are no arguments, passing options to the factory', async () => {
+      const { app, http, createApp } = build();
+
+      await app.main([], { tag: 'api' });
 
       expect(http.calls).toContain('listen:3999');
+      expect(createApp).toHaveBeenCalledWith({ tag: 'api' }, { port: 3999 });
     });
 
     it('prints the help text instead when there are no arguments and no HTTP mode', async () => {
@@ -258,27 +498,19 @@ describe('defineApp', () => {
       expect(runOneShot).toHaveBeenCalledWith(runtime, ['--help']);
     });
 
-    it('runs anything else as a one-shot CLI and sets the exit code', async () => {
-      const { app } = build();
+    it('runs anything else as a one-shot CLI, passing options, and sets the exit code', async () => {
+      const { app, createTool } = build();
       vi.mocked(runOneShot).mockResolvedValue(3);
 
-      await app.main(['note.get', '--id', '1']);
+      await app.main(['note.get', '--id', '1'], { tag: 'cli' });
 
       expect(runOneShot).toHaveBeenCalledWith(runtime, [
         'note.get',
         '--id',
         '1',
       ]);
+      expect(createTool).toHaveBeenCalledWith({ tag: 'cli' });
       expect(process.exitCode).toBe(3);
-    });
-
-    it('treats --help as a one-shot request, not a server start', async () => {
-      const { app, createApp } = build();
-
-      await app.main(['--help']);
-
-      expect(runOneShot).toHaveBeenCalledWith(runtime, ['--help']);
-      expect(createApp).not.toHaveBeenCalled();
     });
 
     describe('errors', () => {
@@ -295,6 +527,41 @@ describe('defineApp', () => {
         expect(process.exitCode).toBe(1);
       });
 
+      it('reports an operator error from the HTTP mode the same way', async () => {
+        const { app } = build({
+          http: {
+            createApp: async () => {
+              throw new OperatorError('no workspace for the api');
+            },
+            portEnv: 'DEMO_APP_MAIN_PORT',
+            defaultPort: 1,
+          },
+        });
+
+        await app.main([]);
+
+        expect(stderr).toBe('no workspace for the api\n');
+        expect(process.exitCode).toBe(1);
+      });
+
+      it('reports an operator error from an extra mode the same way, including a synchronous throw', async () => {
+        const { app } = build({
+          extraModes: [
+            {
+              flag: '--hub',
+              run: () => {
+                throw new OperatorError('hub needs a root');
+              },
+            },
+          ],
+        });
+
+        await app.main(['--hub']);
+
+        expect(stderr).toBe('hub needs a root\n');
+        expect(process.exitCode).toBe(1);
+      });
+
       it('rethrows any other error from a long-running mode', async () => {
         const { app } = build({
           createTool: async () => {
@@ -305,7 +572,7 @@ describe('defineApp', () => {
         await expect(app.main(['--sidecar'])).rejects.toThrow('real bug');
       });
 
-      it('rethrows an unexpected error from the HTTP mode', async () => {
+      it('rethrows an unexpected error from the HTTP mode and from an extra mode', async () => {
         const { app } = build({
           http: {
             createApp: async () => {
@@ -314,9 +581,18 @@ describe('defineApp', () => {
             portEnv: 'DEMO_APP_MAIN_PORT',
             defaultPort: 1,
           },
+          extraModes: [
+            {
+              flag: '--hub',
+              run: async () => {
+                throw new Error('hub broke');
+              },
+            },
+          ],
         });
 
         await expect(app.main([])).rejects.toThrow('port in use');
+        await expect(app.main(['--hub'])).rejects.toThrow('hub broke');
       });
 
       it('prints an operator error from the one-shot CLI without a stack', async () => {
@@ -330,6 +606,22 @@ describe('defineApp', () => {
 
         expect(stderr).toBe('bad config\n');
         expect(process.exitCode).toBe(1);
+      });
+
+      it('prints a non-Error value from an operator predicate as text, never as "undefined"', async () => {
+        const { app } = build({
+          isOperatorError: (error) => typeof error === 'string',
+          createTool: async () => {
+            throw 'plain string failure';
+          },
+        });
+
+        await app.main(['x']);
+        expect(stderr).toBe('plain string failure\n');
+
+        stderr = '';
+        await app.main(['--repl']);
+        expect(stderr).toBe('plain string failure\n');
       });
 
       it('prints any other one-shot failure with the app name and its stack', async () => {

@@ -29,6 +29,10 @@ flowchart LR
   repl[app-repl] --> runtime
   sidecar[app-sidecar] --> runtime
   http[app-http] --> runtime
+  main[app-main] --> cli
+  main --> repl
+  main --> sidecar
+  main --> runtime
   runtime["app-runtime<br/>(CqrsToolRuntime)"] -->|commands / queries| buses[your CommandBus / QueryBus]
   runtime -.->|Recorder, optional| obs[app-observability]
   runtime -->|ToolEnvelope| out["each transport renders it:<br/>CLI exit code · REPL page · JSON line · HTTP response"]
