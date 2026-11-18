@@ -50,7 +50,7 @@ describe('the recorder port', () => {
     expect('durationMs' in finished).toBe(false);
   });
 
-  it('never throws on a clock glitch, because timing must not change the observed unit (ADR-072 D7): the duration is omitted', () => {
+  it('never throws on a clock glitch, because timing must not change the observed unit: the duration is omitted', () => {
     for (const steps of [
       [
         ['a', Number.NaN],

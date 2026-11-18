@@ -9,7 +9,7 @@ const reqs = ['Must be JSON', 'Has a title'].map((text) => ({
 }));
 const subject = { outputText: '{"title":"x"}' };
 
-describe('evaluateRequirements (ADR-073 D4, D5): the scaffolding, with no evaluator registered by default', () => {
+describe('evaluateRequirements: the scaffolding, with no evaluator registered by default', () => {
   it('with no evaluators every requirement is not-evaluated, with no evidence and no evaluator, never omitted and never met', () => {
     const entries = evaluateRequirements(reqs, subject, []);
     expect(entries).toEqual(

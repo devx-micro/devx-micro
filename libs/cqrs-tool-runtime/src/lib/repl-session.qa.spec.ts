@@ -7,7 +7,7 @@ import { bindOperationLine, describeVariable } from './repl-language';
 import type { SessionBoardPort } from './session-board';
 import { completeReplWithVariables, runInteractiveRepl } from './transports';
 
-/** QA probes for Whiteboard Phase 02 (REPL sessions and variables). Each states the behaviour that SHOULD hold. */
+/** QA probes for REPL sessions and variables. Each states the behaviour that SHOULD hold. */
 class MapPort implements SessionBoardPort {
   public readonly boards = new Map<string, Map<string, unknown>>();
   public ended: string[] = [];

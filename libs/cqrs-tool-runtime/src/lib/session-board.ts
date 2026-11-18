@@ -1,9 +1,9 @@
 /**
- * The REPL's session variables (ADR-066 D7).
+ * The REPL's session variables.
  *
- * 🔴 **A port declared here and implemented elsewhere.** This library is `scope:shared` and cannot
- * import the Whiteboard; the Whiteboard (`libs/platform/whiteboard/application`) implements it over
- * its own commands, and a composition root binds it into the runtime. A runtime with none bound
+ * 🔴 **A port declared here and implemented elsewhere.** This library is shared and cannot
+ * import its consumer; the consumer implements it over its own
+ * storage, and a composition root binds it into the runtime. A runtime with none bound
  * still runs every operation: only the variable commands are unavailable, and they say so.
  */
 export interface SessionBoardPort {

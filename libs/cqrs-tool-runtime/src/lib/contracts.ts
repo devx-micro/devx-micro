@@ -12,10 +12,10 @@ export interface ToolBus {
 }
 
 /**
- * A JSON Schema node in the subset ADR-064 D7 allows — declared structurally HERE because this
- * library is `scope:shared` and must not import `agents-application`, which owns the validator
- * (`validateToolInputSchema`). The consumer, not this type, is the gate: a spec in `mvp` proves
- * `validateToolDefinition` accepts every real schema.
+ * A JSON Schema node in the subset allowed — declared structurally HERE because this
+ * library is shared and must not import the agent layer, which owns the validator.
+ * The consumer, not this type, is the gate: it should prove its tool-definition validator accepts
+ * every real schema.
  *
  * ⚠️ A `type` alias, not an `interface`: only an alias is assignable to `Record<string, unknown>`,
  * which is how the consumer types a schema.
@@ -59,8 +59,8 @@ export interface ToolOperationDescriptor<TInput = Record<string, unknown>> {
    */
   readonly validate?: (input: Record<string, unknown>) => TInput;
   /**
-   * The shape of this operation's input, for exposing it as an agent tool (ADR-064 D7 — the first
-   * slice of the parking-lot row "Declarative operation schema").
+   * The shape of this operation's input, for exposing it as an agent tool (a first
+   * slice of a declarative operation schema).
    *
    * 🔴 **Optional, and the only thing that makes an operation eligible to become a tool.** It is
    * documentation of what `validate` already accepts, not a second validator: `CqrsToolRuntime` never
@@ -68,13 +68,13 @@ export interface ToolOperationDescriptor<TInput = Record<string, unknown>> {
    */
   readonly inputSchema?: OperationInputSchema;
   /**
-   * The ADR-072 `kind` this operation is observed as. Absent means `operation`. The `skill.step.*` verbs set
-   * `workflow-step`: they are CQRS operations too, but a more specific kind replaces the runtime seam's
-   * `operation` event rather than adding a second one (ADR-072 D4a).
+   * The `kind` this operation is observed as. Absent means `operation`. An operation that is really a
+   * workflow step can set `workflow-step`: it is still a CQRS operation, but a more specific kind replaces the runtime seam's
+   * `operation` event rather than adding a second one.
    */
   readonly observationKind?: ObservationKind;
   /**
-   * The handler writes this operation's one completion record itself (the ADR-072 D8 harness operation: a
+   * The handler writes this operation's one completion record itself (the harness operation: a
    * more specific `inference-run` record, which D4a says replaces the runtime seam's `operation` event and never
    * adds a second one). The runtime then records nothing for a call that succeeded. A call that was refused or that
    * failed still gets the runtime's failure record, because then no completion was written.
@@ -110,8 +110,7 @@ export interface ToolEnvelope<T = unknown> {
    * `success` and `error` alone made a resumable sequence that stopped part-way indistinguishable
    * from one that finished: the runtime derived `success` from *"the handler did not throw"*, and a
    * refused step returns normally. A nine-step close-out that ran three steps and refused the
-   * fourth reported `success` with exit code 0 — observed on two different operations on
-   * 2026-09-08 (`d-20260908-cqrstoolruntime-reports-status-success-for-any`).
+   * fourth reported `success` with exit code 0, on two different operations.
    *
    * ⚠️ **`incomplete` is not a softer `error`, and that distinction is the point.** A failure wants
    * diagnosis; a stop wants **resumption**, from the step named in `data`. Collapsing the two would
@@ -130,8 +129,8 @@ export interface ToolEnvelope<T = unknown> {
  * What a handler returns when it runs a **resumable sequence** rather than a single action.
  *
  * `complete` is the opt-in: an operation that is not a sequence returns a payload without it and is
- * reported exactly as before. 🔴 **The key is the contract, not a convention** — every `scm`
- * close-out already returned it, and the runtime was simply not reading it.
+ * reported exactly as before. 🔴 **The key is the contract, not a convention** — every
+ * resumable sequence already returned it, and the runtime was simply not reading it.
  */
 export interface ResumableRun {
   readonly complete: boolean;

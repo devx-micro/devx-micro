@@ -36,7 +36,7 @@ const entry = (
   ...extra,
 });
 
-describe('the decision rule (ADR-073 D5a), over the whole verdict matrix', () => {
+describe('the decision rule, over the whole verdict matrix', () => {
   // [verdicts, decision, reason, partial]
   const matrix: ReadonlyArray<
     [readonly Verdict[], 'accepted' | 'rejected', string, boolean]
@@ -82,7 +82,7 @@ describe('the decision rule (ADR-073 D5a), over the whole verdict matrix', () =>
   });
 });
 
-describe('derived confidence (ADR-073 D6)', () => {
+describe('derived confidence', () => {
   it('is met / (met + not-met)', () => {
     expect(derivedConfidence({ met: 3, notMet: 1, notEvaluated: 9 })).toBe(
       0.75,
@@ -136,7 +136,7 @@ describe('validateContract', () => {
   it('accepts a well-formed contract', () => {
     expect(validateContract(contract)).toEqual([]);
   });
-  it('refuses two requirements that share a requirementId (D2)', () => {
+  it('refuses two requirements that share a requirementId', () => {
     const dup = {
       ...contract,
       requirements: [contract.requirements[0], contract.requirements[0]],
@@ -176,7 +176,7 @@ describe('validateIteration', () => {
   it('accepts the unevaluable shape', () => {
     expect(validateIteration(iteration())).toEqual([]);
   });
-  it('requires evidence for met and not-met (D4)', () => {
+  it('requires evidence for met and not-met', () => {
     const noEvidence = {
       requirementId: id('Must be JSON'),
       verdict: 'met',
@@ -283,7 +283,7 @@ describe('validateIteration', () => {
   });
 });
 
-describe('completeRun maps the run onto ADR-072 D6 (ADR-073 D7a, D8)', () => {
+describe('completeRun maps the run onto the observation record', () => {
   const base = {
     contractRef,
     contractComplete: true,
@@ -393,7 +393,7 @@ describe('completeRun maps the run onto ADR-072 D6 (ADR-073 D7a, D8)', () => {
     expect(done.result.evidence[0]).toBe('duplicate-requirement');
   });
 
-  it('no iteration: iterations and partial are omitted, not written as 0 or false (D8)', () => {
+  it('no iteration: iterations and partial are omitted, not written as 0 or false', () => {
     const done = completeRun({
       ...base,
       contractComplete: false,
@@ -432,9 +432,9 @@ describe('completeRun maps the run onto ADR-072 D6 (ADR-073 D7a, D8)', () => {
       ...base,
       failureClass: 'x',
       escalated: true,
-      escalatedTo: 'founder',
+      escalatedTo: 'operator',
     });
-    expect(done.detail.escalatedTo).toBe('founder');
+    expect(done.detail.escalatedTo).toBe('operator');
     expect(
       'escalatedTo' in completeRun({ ...base, failureClass: 'x' }).detail,
     ).toBe(false);

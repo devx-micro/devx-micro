@@ -7,7 +7,7 @@ import {
   verifyContentId,
 } from './content-id';
 
-describe('content ids (ADR-072 D3)', () => {
+describe('content ids', () => {
   it('hashes the RFC 8785 canonical JSON: an independently computed golden vector', () => {
     const rfc = {
       numbers: [333333333.3333333, 1e30, 4.5, 2e-3, 1e-27],

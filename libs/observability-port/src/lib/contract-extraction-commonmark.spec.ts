@@ -8,7 +8,7 @@ import {
 } from './contract-extraction';
 
 /**
- * Code blocks are whatever a CommonMark parser says they are (ADR-073 D2, Phase 04 QA). Four hand-written patches to a
+ * Code blocks are whatever a CommonMark parser says they are Four hand-written patches to a
  * fence scanner each diverged from CommonMark in a new way, so the scanner was retired for `mdast-util-from-markdown`;
  * this spec holds the extractor to that parser, fenced AND indented code alike.
  */

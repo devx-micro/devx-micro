@@ -3,15 +3,15 @@ import { validateObservation, type ObservationRecord } from './record';
 const ok: ObservationRecord = {
   schemaVersion: 1,
   kind: 'operation',
-  operator: 'mvp',
-  operation: 'skill.catalog',
+  operator: 'my-tool',
+  operation: 'item.catalog',
   beforeTimestamp: '2026-10-10T12:00:00.000Z',
   afterTimestamp: '2026-10-10T12:00:01.000Z',
   durationMs: 1000,
   result: { outcome: 'success', evidence: [] },
 };
 
-describe('validateObservation (ADR-072 D4 to D6)', () => {
+describe('validateObservation', () => {
   it('accepts a minimal success with no evidence and no model', () => {
     expect(validateObservation(ok)).toEqual([]);
   });
@@ -301,7 +301,7 @@ describe('validateObservation (ADR-072 D4 to D6)', () => {
         afterTimestamp: '2026-10-10T12:00:00.5Z',
       }),
     ).toEqual([]);
-    // The wall clock can step (ADR-072 D5): a unit that ran correctly may have after < before, and it must still be recordable.
+    // The wall clock can step: a unit that ran correctly may have after < before, and it must still be recordable.
     expect(
       validateObservation({
         ...ok,
@@ -341,7 +341,7 @@ describe('validateObservation (ADR-072 D4 to D6)', () => {
       result: { outcome: 'success', evidence: new Array(3) },
     };
     expect(validateObservation(holes)).not.toEqual([]);
-    expect(validateObservation({ ...ok, operator: 'mvp\ud800' })).toEqual([
+    expect(validateObservation({ ...ok, operator: 'my-tool\ud800' })).toEqual([
       expect.stringContaining('surrogate'),
     ]);
     expect(

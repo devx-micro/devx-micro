@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { bindOperationLine } from './repl-language';
 
-/** QA probe (Whiteboard Phase 02 re-pass): placeholders are `<nonce><index>`, so index 1 is a prefix of index 10. */
+/** QA probe: placeholders are `<nonce><index>`, so index 1 is a prefix of index 10. */
 describe('QA: parse-error rewriting of placeholders', () => {
   it('QR-1 the message names the reference the person typed, even with 11+ references on the line', async () => {
     const vars: Record<string, unknown> = {};

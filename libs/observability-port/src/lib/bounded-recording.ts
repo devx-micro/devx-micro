@@ -1,5 +1,5 @@
 /**
- * The bounded recorder wait and its breaker — ADR-072 D7, shared by every seam that records (the CQRS tool runtime,
+ * The bounded recorder wait and its breaker — shared by every seam that records (the CQRS tool runtime,
  * the dispatch seam) so they cannot drift.
  *
  * 🔴 **Recording never changes the observed unit's result.** `run` never throws, and it never waits longer than the

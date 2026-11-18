@@ -174,7 +174,7 @@ export interface DriverRequest {
   readonly correlationId?: string;
 }
 
-/** Newline-delimited JSON transport — used by the sidecar/VS Codium Extension integration. */
+/** Newline-delimited JSON transport — used by sidecar integrations such as editor extensions. */
 export async function runJsonLinesDriver(
   runtime: CqrsToolRuntime,
   input: Readable = process.stdin,
@@ -263,10 +263,10 @@ const NO_SESSION_BOARD =
   'This REPL has no session board bound, so variables are unavailable here (an app binds one with SessionBoardPort).';
 
 /**
- * Stateful interactive REPL — the transport Domain Assembly Cucumber/Screenplay tests drive.
+ * Stateful interactive REPL — the transport that scripted acceptance tests can drive.
  *
  * A session has an id, and every line is dispatched with a correlation id built from it
- * (`<sessionId>.<line>`), so the lines of one sitting can be grouped (ADR-066 D7). That holds in
+ * (`<sessionId>.<line>`), so the lines of one sitting can be grouped. That holds in
  * every app. Variables (`set $x = …`, `$x.path`, `vars`, `unset`, `board attach|save`) additionally
  * need a `SessionBoardPort` on the runtime.
  */
@@ -465,7 +465,7 @@ export async function runInteractiveRepl(
     }
   } finally {
     // Ending a session discards its board; a saved copy is unaffected. A killed session never gets
-    // here, so its board lapses by TTL instead (ADR-066 D2).
+    // here, so its board lapses by TTL instead.
     if (board) await board.end(sessionId).catch(() => undefined);
   }
 }

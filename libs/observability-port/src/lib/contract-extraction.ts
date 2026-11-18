@@ -1,11 +1,9 @@
 /**
- * Contract extraction — ADR-073 D2. Pure: step text in, role/goal/requirements/assumptions out.
+ * Contract extraction. Pure: step text in, role/goal/requirements/assumptions out.
  *
- * 🔴 **It mirrors the heading rules of the PromptOS facets in `promptos-conformance.ts` (`libs/tooling/scm/domain` in the `lean-agile-os` repo, not migrated here)**
- * (`FACETS`: `goal`, `requirements`, `assumptions`), because ADR-073 D2 wants role, goal and requirements read through
- * the same facet parsing and this library (`scope:shared`) cannot import `scope:tooling`. The facets only detect
- * PRESENCE; this reads the content. Upstream, agreement with the facets is asserted by a spec in `scm-domain` over the real
- * step files; that spec is not present in this repo, so the two can drift until the facets are migrated.
+ * 🔴 **It follows the heading conventions of the step-file format it reads** (`goal`, `requirements`,
+ * `assumptions` sections), which are defined by the consuming repository. This library cannot import its
+ * consumer, so the conventions are restated here and can drift from the source format.
  *
  * What counts as a requirement (in the order the facet tests them):
  *  - each bullet (or, with no bullets, each paragraph) under a `##+ Requirements|Acceptance|Non-negotiables|Rules|
@@ -40,7 +38,7 @@ export interface ExtractedContract {
   }[];
   /** The `requirementId`s that appeared more than once. */
   readonly duplicates: readonly ContentId[];
-  /** ADR-073 D8: false for a step with no requirements, and for a duplicate (D2). */
+  /** false for a step with no requirements, and for a duplicate. */
   readonly contractComplete: boolean;
   /** Present only when the document was not parsed at all (too large, too deeply nested, or the parser threw). */
   readonly incompleteReason?: string;
@@ -323,7 +321,7 @@ export function extractContract(
   let reason: string | undefined;
   const lines = blankCodeBlocks(text, (why) => (reason = why));
   const role = options.role !== undefined ? { role: options.role } : {};
-  // Unparseable is not "no requirements found": it says so, and the contract is incomplete (D8). Never a throw.
+  // Unparseable is not "no requirements found": it says so, and the contract is incomplete. Never a throw.
   if (lines === undefined)
     return {
       ...role,

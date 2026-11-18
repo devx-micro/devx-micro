@@ -1,9 +1,9 @@
 /**
- * Requirement evaluation scaffolding — ADR-073 D4, D5. Pure.
+ * Requirement evaluation scaffolding. Pure.
  *
- * 🔴 **No deterministic evaluator exists yet** (ADR-073 Consequences: building the first few is Slice A work), so the
+ * 🔴 **No deterministic evaluator exists yet**, so the
  * registry that seams use by default is empty and every requirement comes out `not-evaluated`. That is the honest
- * answer, and per D5a an iteration with nothing but `not-evaluated` is `unevaluable`. Nothing here ever guesses a `met`.
+ * answer, and an iteration with nothing but `not-evaluated` is `unevaluable`. Nothing here ever guesses a `met`.
  */
 import type { EvaluationEntry, RequirementRecord } from './inference';
 import { validateIteration } from './inference';

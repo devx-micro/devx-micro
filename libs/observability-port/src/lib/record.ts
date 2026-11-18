@@ -1,7 +1,7 @@
 /**
- * The observation record — ADR-072 D4 to D6. The fields are a closed list: a new field or a changed
- * meaning bumps `schemaVersion` and starts with an ADR amendment. A kind's own fields live in `detail`,
- * whose schema the ADR that defines the kind owns (ADR-073 for `inference-run`).
+ * The observation record. The fields are a closed list: a new field or a changed
+ * meaning bumps `schemaVersion` and is a deliberate, documented schema change. A kind's own fields live in `detail`,
+ * whose schema is owned by whatever defines the kind (the inference-run types for `inference-run`).
  */
 import { canonicalJson } from './canonical-json';
 import { isContentId, type ContentId } from './content-id';
@@ -66,7 +66,7 @@ export interface ObservationRecord {
   readonly external?: true;
   /** Named content ids of artifacts stored separately (`journalSlice`, `input`, `output`, `arguments`). */
   readonly refs?: Readonly<Record<string, ContentId>>;
-  /** A kind's own fields; the schema belongs to the ADR that defines the kind. */
+  /** A kind's own fields; the schema belongs to whatever defines the kind. */
   readonly detail?: Readonly<Record<string, unknown>>;
   /** Present only when a payload was withheld: ref name to reason. */
   readonly withheld?: Readonly<Record<string, string>>;
@@ -76,7 +76,7 @@ export interface ObservationRecord {
 /**
  * What a seam hands to a recorder; the recorder stamps `schemaVersion`.
  *
- * 🔴 **There is no `external` member.** The marker has one writer, the ADR-072 D8 harness operation, which reaches it
+ * 🔴 **There is no `external` member.** The marker has one writer, the harness operation, which reaches it
  * through the observability context's own `recordExternal`, not through the port a seam depends on. A caller that
  * smuggles the key past the type is refused at runtime by the recorder.
  */
@@ -135,7 +135,7 @@ const RESULT_FIELDS = [
 ];
 const MODEL_FIELDS = ['provider', 'modelId', 'version', 'route'];
 const CONFIDENCE_FIELDS = ['selfReported', 'derived'];
-/** Parts of the record itself that can be withheld without being a separately stored ref (ADR-072 D9). */
+/** Parts of the record itself that can be withheld without being a separately stored ref. */
 const RECORD_OWN_WITHHELD = ['detail', 'evidence'];
 
 const unknownFields = (
@@ -145,10 +145,7 @@ const unknownFields = (
 ): string[] =>
   Object.keys(value)
     .filter((key) => !allowed.includes(key))
-    .map(
-      (key) =>
-        `${where}: unknown field ${key} (the field list is closed, ADR-072 D4)`,
-    );
+    .map((key) => `${where}: unknown field ${key} (the field list is closed)`);
 
 /** Text for whatever was thrown, even a value whose own `toString` throws. */
 function describeThrown(thrown: unknown): string {
@@ -160,7 +157,7 @@ function describeThrown(thrown: unknown): string {
 }
 
 /**
- * Every violation of the ADR-072 rules a type alone cannot express; an empty list means the record is
+ * Every violation of the observation rules a type alone cannot express; an empty list means the record is
  * valid **and recordable**: the last check asks `canonicalJson` whether the record can be hashed, so a
  * record that validates never fails later with a throw (a sparse array, a lone surrogate, a `Date` in
  * `detail`, an inherited field, a cycle).
@@ -209,7 +206,7 @@ function collectProblems(input: unknown): readonly string[] {
     problems.push(
       'afterTimestamp must be a UTC ISO-8601 timestamp ending in Z',
     );
-  // No ordering check: the wall clock can step backwards (ADR-072 D5), and a unit that ran correctly
+  // No ordering check: the wall clock can step backwards, and a unit that ran correctly
   // must still be recordable. `durationMs` comes from the monotonic clock, not from these two.
   for (const field of ['durationMs', 'latencyMs']) {
     if (record[field] !== undefined && !isMeasure(record[field]))

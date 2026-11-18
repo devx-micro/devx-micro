@@ -18,8 +18,7 @@ const refuses = (
 };
 
 /**
- * Proves a descriptor's `inputSchema` agrees with the `validate` hook that actually governs it
- * (ADR-064 D7). Framework-agnostic (`node:assert`), exported like the repository's other
+ * Proves a descriptor's `inputSchema` agrees with the `validate` hook that actually governs it. Framework-agnostic (`node:assert`), exported like the repository's other
  * `*.contract.ts` suites so each bounded context can run it against its own descriptors without
  * depending on the others.
  *

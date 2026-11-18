@@ -32,7 +32,7 @@ const isInputObject = (value: unknown): value is Record<string, unknown> =>
 
 export interface CqrsToolRuntimeOptions {
   /**
-   * The REPL's session variables (ADR-066 D7). Optional: a runtime without it runs every operation,
+   * The REPL's session variables. Optional: a runtime without it runs every operation,
    * and the REPL's variable commands say plainly that no session board is bound.
    */
   readonly sessionBoard?: SessionBoardPort;
@@ -43,18 +43,18 @@ export interface CqrsToolRuntimeOptions {
   /** The operations this runtime serves. Names must be unique, or construction throws `DUPLICATE_OPERATION`. */
   readonly operations: readonly ToolOperationDescriptor[];
   /**
-   * Where each dispatch is recorded (ADR-072 D7: this is one of the four seams). Optional and injected: this
-   * library is `scope:shared` and holds only the port, never the implementation, so an app that gives none
+   * Where each dispatch is recorded. Optional and injected: this
+   * library is shared and holds only the port, never the implementation, so an app that gives none
    * behaves exactly as before.
    */
   readonly recorder?: Recorder;
-  /** Wall and monotonic clocks for the observation (ADR-072 D5); the system clocks when absent. */
+  /** Wall and monotonic clocks for the observation; the system clocks when absent. */
   readonly clock?: Clock;
   /** The `operator` recorded for every operation (the tool or app name). */
   readonly operator?: string;
   /**
    * How long a dispatch waits for the recorder before answering anyway (default 2000 ms). A recorder that never settles
-   * (a wedged store) must not withhold the answer from the caller (ADR-072 D7); a merely slow one is awaited.
+   * (a wedged store) must not withhold the answer from the caller; a merely slow one is awaited.
    */
   readonly recordTimeoutMs?: number;
   /**
@@ -68,11 +68,10 @@ export interface CqrsToolRuntimeOptions {
 
 /**
  * The plain-text operations listing `CqrsToolRuntime.help()` renders — pulled out as a standalone,
- * bus-free function (2026-09-15, `/code-review`) so a caller that only ever needs `--help` output
+ * bus-free function so a caller that only ever needs `--help` output
  * can produce the EXACT same text without constructing a `CqrsToolRuntime` (which needs a
- * `commandBus`/`queryBus` — bus-shaped values a `--help` listing has no use for) at all. See
- * `apps/platform/agents/src/main.ts`'s own `--help` fast path, the caller this was extracted for:
- * it used to build a throwaway `CqrsToolRuntime` wired to a `ToolBus` that threw if ever called,
+ * `commandBus`/`queryBus` — bus-shaped values a `--help` listing has no use for) at all. It was extracted for
+ * a `--help` fast path that used to build a throwaway `CqrsToolRuntime` wired to a `ToolBus` that threw if ever called,
  * purely to reach this formatting. Sorts by name, mirroring `listOperations()`'s own sort, so a
  * caller passing an unsorted descriptor list still gets the same output `help()` would.
  */
@@ -140,9 +139,8 @@ export function formatOperationsHelp(
     '  --repl                 interactive command prompt',
     // 🔴 `--sidecar`, not `--driver`. Every app dispatches on `--sidecar`; nothing has ever read
     // `--driver`, and because an unrecognised flag falls through to the HTTP branch, following
-    // this line started a **web server** instead of a JSON-lines driver. Found 2026-09-01 while
-    // implementing the transports `mvp` and `data-store` were missing, by typing what the help
-    // said. The function is named `runJsonLinesDriver`, which is where the wrong word came from.
+    // this line started a **web server** instead of a JSON-lines driver. Found by typing what the
+    // help said. The function is named `runJsonLinesDriver`, which is where the wrong word came from.
     '  --sidecar              newline-delimited JSON protocol',
     '  --cli                  one operation, then exit',
   );
@@ -323,10 +321,10 @@ export class CqrsToolRuntime {
 
   /**
    * 🔴 **Recording never changes the result.** Anything the recorder, the clock or this mapping throws is
-   * swallowed here (ADR-072 D7); the recorder itself reports its own failures. The record is awaited, because a
+   * swallowed here; the recorder itself reports its own failures. The record is awaited, because a
    * one-shot CLI process exits when the envelope is written and an unawaited write would be lost.
    *
-   * 🔴 **No argument value is recorded** (ADR-072 D9): only the names of the keys that were given, and the
+   * 🔴 **No argument value is recorded**: only the names of the keys that were given, and the
    * error *code* as failure evidence, never its message, which can echo caller text.
    */
   private async observe(
@@ -346,7 +344,7 @@ export class CqrsToolRuntime {
       | undefined,
   ): Promise<void> {
     try {
-      // The handler already wrote the one completion (ADR-072 D4a); a second, generic one would be a double count.
+      // The handler already wrote the one completion; a second, generic one would be a double count.
       if (operation.recordsItself === true && envelope.status === 'success')
         return;
       const measured = timing?.finish();
@@ -419,7 +417,7 @@ export class CqrsToolRuntime {
       // every transport boundary — an HTTP body, a sidecar line — and a string, number or null
       // used to reach `probeInput`'s Proxy, whose TypeError the catch below flattened to
       // HANDLER_FAILURE at exit 1: a caller's error reported as a server's
-      // (d-20260912-cqrstoolruntime-dispatch-answers-a-non-object). An array is a legal Proxy
+      // An array is a legal Proxy
       // target and would otherwise be validated as an object with no keys.
       if (!isInputObject(rawInput)) {
         throw invalidInput(
@@ -506,9 +504,8 @@ export class CqrsToolRuntime {
  * "that id already exists" — all three arrived as one code with the message as their only
  * distinguishing feature, which is exactly what callers are told not to read.
  *
- * The errors that carry a code already existed — `WorkflowNotFoundError`, the persistence
- * adapter's `store-locked` and `store-location-missing`, and now `WorkspaceError` and the store
- * errors. This stops flattening them.
+ * The errors that carry a code already existed — domain errors such as a not-found error or a
+ * persistence adapter's `store-locked` already carried their own codes. This stops flattening them.
  *
  * `exitCode` is honoured the same way, so a domain that knows an operation was **refused** rather
  * than **broken** can say so; anything that does not know keeps the old `1`.
@@ -555,7 +552,7 @@ export function parseToolArguments(arguments_: readonly string[]): {
     // Both flags feed the identical parse-and-merge path below, so neither gets its own
     // error-shape or accumulate behaviour to drift from the other's.
     //
-    // 🔴 **`readFileSync`, deliberately, not the async `fs/promises` read** — `/code-review`
+    // 🔴 **`readFileSync`, deliberately, not the async `fs/promises` read** — code review
     // (efficiency angle) correctly notes this blocks the event loop for the read's duration, which
     // matters for `runInteractiveRepl`'s long-lived loop and not for `runOneShot`'s one-shot
     // process. Accepted rather than fixed: this flag's payload is a small JSON *object* (the same
@@ -565,7 +562,7 @@ export function parseToolArguments(arguments_: readonly string[]): {
     // was never meant to carry large files through.
     //
     // 🔴 **Relative paths resolve against the process's own `cwd`, not a shell the operator may
-    // have `cd`'d in meanwhile** — `/code-review` (cross-file angle) flagged this for
+    // have `cd`'d in meanwhile** — code review (cross-file angle) flagged this for
     // `runInteractiveRepl`'s long-lived loop specifically. This is standard, expected Node
     // behaviour for any long-running process taking path arguments, not something `--json-file`
     // introduces; an absolute path sidesteps the question entirely, which is what this file's own
@@ -573,7 +570,7 @@ export function parseToolArguments(arguments_: readonly string[]): {
     //
     // 🔴 **A new flag name is a new token an unquoted REPL line could accidentally collide
     // with — inherent to any `--flag`-recognising parser, not unique to this one** —
-    // `/code-review` (cross-file angle) traced the escalation precisely: an unquoted business
+    // code review (cross-file angle) traced the escalation precisely: an unquoted business
     // value that happened to contain the literal token `--json` already risked the same class of
     // accidental merge (of data the caller already typed); `--json-file` escalates the *outcome*
     // of that same pre-existing collision from re-injecting visible caller data to a same-machine
@@ -595,7 +592,7 @@ export function parseToolArguments(arguments_: readonly string[]): {
       let json: string;
       if (isFile) {
         try {
-          // 🔴 **BOM stripped, deliberately — `/code-review` finding.** A `--json` payload arrives
+          // 🔴 **BOM stripped, deliberately — code review finding.** A `--json` payload arrives
           // as a shell argument, which can never carry a byte-order-mark; a JSON *file* saved by a
           // common Windows/PowerShell/Excel export often does (`Set-Content` without
           // `-Encoding utf8NoBOM`, U+FEFF at byte 0), and `JSON.parse` refuses it at position 0.
@@ -604,7 +601,7 @@ export function parseToolArguments(arguments_: readonly string[]): {
           json = readFileSync(raw, 'utf8');
           if (json.charCodeAt(0) === 0xfeff) json = json.slice(1);
         } catch (error) {
-          // 🔴 **`JSON_FILE_UNREADABLE`, not `MISSING_JSON` — `/code-review` finding.** `MISSING_JSON`
+          // 🔴 **`JSON_FILE_UNREADABLE`, not `MISSING_JSON` — code review finding.** `MISSING_JSON`
           // above means "no path was given at all"; ENOENT/EACCES/EISDIR mean a path *was* given and
           // reading it failed for a real, distinct reason. This file's own contract elsewhere is
           // "branch on `error.code`, never on the message text" — conflating the two would leave a
@@ -640,7 +637,7 @@ export function parseToolArguments(arguments_: readonly string[]): {
       }
       // 🔴 Through the same accumulate rule as a flag: a key given by `--json`/`--json-file` AND by
       // a flag, in either order, or by two of them, is one key given twice — accumulated, never the
-      // later silently winning (QA of d-20260911-a-repeated-cli-flag-keeps-only).
+      // later silently winning.
       for (const [key, value] of Object.entries(parsed)) {
         accumulate(input, key, value, `${argument}'s '${key}'`);
       }
@@ -666,11 +663,10 @@ export function parseToolArguments(arguments_: readonly string[]): {
 /**
  * 🔴 A repeated key ACCUMULATES: `--scope a.ts --scope b.ts` is `['a.ts', 'b.ts']`, in order, and
  * so is a key given by `--json` and by a flag. It used to be `input[key] = value` unconditionally,
- * so the second overwrote the first and `defect.open` recorded one scope while reporting success
- * (`d-20260911-a-repeated-cli-flag-keeps-only`). A single-valued argument given twice now reaches
+ * so the second overwrote the first and a command recorded one scope while reporting success.
+ * A single-valued argument given twice now reaches
  * its validator as an array — and every validator must REFUSE that by name rather than map a
- * non-string to "absent" (the `mvp` app's `optional()` did, and ingested the default root; review,
- * round 1). Visible, not last-wins and not silently-absent. A bare flag (`--x`
+ * non-string to "absent" (an `optional()` helper that did so once ingested a default root). Visible, not last-wins and not silently-absent. A bare flag (`--x`
  * with no value) has no value to put in a list: given twice, or beside a valued one, it is refused
  * here. `hasOwnProperty`, not `in`: `--constructor` is not "already present" on a fresh object.
  */
