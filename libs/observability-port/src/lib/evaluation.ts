@@ -8,10 +8,13 @@
 import type { EvaluationEntry, RequirementRecord } from './inference';
 import { validateIteration } from './inference';
 
+/** What is being evaluated. */
 export interface EvaluationSubject {
+  /** The model output the requirements are checked against. */
   readonly outputText: string;
 }
 
+/** Decides requirements about an output. Pass these to {@link evaluateRequirements}. */
 export interface RequirementEvaluator {
   /** A verdict for this requirement, or `undefined` when this evaluator cannot decide it. */
   evaluate(

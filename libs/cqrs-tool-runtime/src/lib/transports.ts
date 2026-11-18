@@ -22,6 +22,7 @@ const defaultIo: ToolIo = {
   stderr: (line) => process.stderr.write(`${line}\n`),
 };
 
+/** Formats an envelope (or any response) as the text the interactive REPL prints. */
 export function formatReplResponse(response: unknown): string {
   const envelope =
     response && typeof response === 'object'
@@ -57,6 +58,7 @@ export function formatReplResponse(response: unknown): string {
   return `${lines.join('\n')}\n`;
 }
 
+/** Formats the REPL's help: the operations listing, or one operation's detail when `topic` names it. */
 export function formatReplHelp(
   runtime: CqrsToolRuntime,
   topic?: string,
@@ -125,6 +127,7 @@ export function formatReplHelp(
   return `${lines.join('\n')}\n`;
 }
 
+/** Tab-completion candidates for a REPL line; see {@link CqrsToolRuntime.completeReplLine}. */
 export function completeReplLine(
   runtime: CqrsToolRuntime,
   line: string,
@@ -132,6 +135,14 @@ export function completeReplLine(
   return runtime.completeReplLine(line);
 }
 
+/**
+ * The CLI transport: runs one operation from command-line arguments, prints its envelope as JSON
+ * and resolves to the exit code the process should use.
+ *
+ * @param runtime - The runtime to dispatch through.
+ * @param arguments_ - The arguments after the program name: `<operation> [--key value] [--json '{…}']`.
+ * @param io - Where to write; the process's stdout and stderr by default.
+ */
 export async function runOneShot(
   runtime: CqrsToolRuntime,
   arguments_: readonly string[],
@@ -168,9 +179,13 @@ export async function runOneShot(
   }
 }
 
+/** One request line of the JSON-lines sidecar protocol. */
 export interface DriverRequest {
+  /** The operation to run, or `help`. */
   readonly operation: string;
+  /** The operation's input; `{}` when omitted. */
   readonly input?: Record<string, unknown>;
+  /** Echoed in the response envelope; generated when omitted. */
   readonly correlationId?: string;
 }
 

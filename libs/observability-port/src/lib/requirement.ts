@@ -12,6 +12,7 @@
  */
 import { contentIdOfText, type ContentId } from './content-id';
 
+/** Puts requirement text in the normal form that {@link requirementId} hashes. */
 export function normalizeRequirementText(text: string): string {
   const lines = text
     .normalize('NFC')

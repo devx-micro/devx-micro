@@ -25,6 +25,7 @@ const DIGEST_LENGTH = 32;
 const CONTENT_ID = /^1-[0-9a-f]{32}$/;
 const ANY_GENERATION = /^(\d+)-([0-9a-f]{32})$/;
 
+/** The content id of raw bytes: `1-` plus the first 32 hex characters of their SHA-256. */
 export function contentIdOfBytes(bytes: Uint8Array): ContentId {
   const digest = createHash('sha256')
     .update(bytes)
@@ -33,21 +34,27 @@ export function contentIdOfBytes(bytes: Uint8Array): ContentId {
   return `1-${digest}`;
 }
 
+/** The content id of the exact UTF-8 bytes of `text`. Throws on text with a lone surrogate. */
 export function contentIdOfText(text: string): ContentId {
   assertWellFormedText(text);
   return contentIdOfBytes(new TextEncoder().encode(text));
 }
 
+/** The content id of a value's RFC 8785 canonical JSON. Throws on a value with no JSON form. */
 export function contentIdOfRecord(value: unknown): ContentId {
   return contentIdOfText(canonicalJson(value));
 }
 
+/** True for a string of the form `1-<32 lowercase hex>`. */
 export function isContentId(value: unknown): value is ContentId {
   return typeof value === 'string' && CONTENT_ID.test(value);
 }
 
+/** Splits a content id into its scheme `generation` and its `digest`. Throws on an unsupported generation or a malformed id. */
 export function parseContentId(id: string): {
+  /** The ID scheme version; only `1` exists. */
   readonly generation: 1;
+  /** The 32 hex characters of the digest. */
   readonly digest: string;
 } {
   const match = ANY_GENERATION.exec(id);
@@ -63,6 +70,10 @@ export function parseContentId(id: string): {
   return { generation: 1, digest: match[2] };
 }
 
+/**
+ * The outcome of {@link verifyContentId}: `ok`, or not ok with a `reason` of `malformed` (not a
+ * content id) or `digest-mismatch` (a well-formed id that names different content).
+ */
 export type ContentIdVerification =
   | { readonly ok: true }
   | { readonly ok: false; readonly reason: 'malformed' | 'digest-mismatch' };

@@ -8,6 +8,7 @@ export type ToolOperationKind = 'command' | 'query';
 
 /** Satisfied by NestJS's real `CommandBus`/`QueryBus` as well as any test double. */
 export interface ToolBus {
+  /** Runs a command or query object and resolves to the handler's result. */
   execute(request: unknown): Promise<unknown>;
 }
 
@@ -21,6 +22,7 @@ export interface ToolBus {
  * which is how the consumer types a schema.
  */
 export type OperationInputSchema = {
+  /** The JSON type of the value. A root schema must be `object`. */
   readonly type:
     | 'object'
     | 'string'
@@ -28,13 +30,21 @@ export type OperationInputSchema = {
     | 'integer'
     | 'boolean'
     | 'array';
+  /** For an `object`: the schema of each named property. */
   readonly properties?: { readonly [name: string]: OperationInputSchema };
+  /** For an `object`: the property names that must be present. */
   readonly required?: readonly string[];
+  /** The only values allowed. */
   readonly enum?: readonly (string | number)[];
+  /** For an `array`: the schema of every element. */
   readonly items?: OperationInputSchema;
+  /** For a `string`: the fewest characters allowed. */
   readonly minLength?: number;
+  /** For a `string`: the most characters allowed. */
   readonly maxLength?: number;
+  /** For a `number` or `integer`: the smallest value allowed. */
   readonly minimum?: number;
+  /** For a `number` or `integer`: the largest value allowed. */
   readonly maximum?: number;
 };
 
@@ -86,6 +96,7 @@ export interface ToolOperationDescriptor<TInput = Record<string, unknown>> {
 export interface ToolErrorBody {
   /** A stable, machine-readable code such as `INVALID_INPUT` or `UNKNOWN_OPERATION`. */
   readonly code: string;
+  /** A human-readable explanation. Do not branch on it. */
   readonly message: string;
   /** Optional structured context for the failure. */
   readonly details?: unknown;
@@ -97,6 +108,7 @@ export interface ToolErrorBody {
  * @typeParam T - The type of `data`.
  */
 export interface ToolEnvelope<T = unknown> {
+  /** Always {@link TOOL_ENVELOPE_VERSION}. */
   readonly schemaVersion: typeof TOOL_ENVELOPE_VERSION;
   /** Groups the envelopes of one request or session; echoed from the caller or generated. */
   readonly correlationId: string;
@@ -133,6 +145,7 @@ export interface ToolEnvelope<T = unknown> {
  * resumable sequence already returned it, and the runtime was simply not reading it.
  */
 export interface ResumableRun {
+  /** `false` when the sequence stopped before finishing; the payload says where, so a caller can resume. */
   readonly complete: boolean;
 }
 
@@ -155,7 +168,9 @@ export function isIncompleteRun(data: unknown): data is ResumableRun {
 
 /** Where the CLI transport writes: injectable so it can be tested without a process. */
 export interface ToolIo {
+  /** Writes one line to standard output. */
   readonly stdout: (line: string) => void;
+  /** Writes one line to standard error. */
   readonly stderr: (line: string) => void;
 }
 
@@ -165,12 +180,19 @@ export interface ToolIo {
  * The HTTP transport maps each to a status.
  */
 export const TOOL_EXIT_CODES = {
+  /** The operation completed. */
   success: 0,
+  /** An unclassified handler failure. */
   failure: 1,
+  /** The caller's input was wrong. */
   usage: 2,
+  /** The request conflicts with current state. */
   conflict: 3,
+  /** A resumable sequence stopped part-way, or a step was refused. */
   blocked: 4,
+  /** The thing asked for does not exist. */
   notFound: 5,
+  /** A backing store or service is unavailable. */
   infrastructure: 10,
 } as const;
 
@@ -180,9 +202,12 @@ export const TOOL_EXIT_CODES = {
  */
 export class ToolRuntimeError extends Error {
   public constructor(
+    /** A stable, machine-readable code, carried into the envelope's `error.code`. */
     public readonly code: string,
     message: string,
+    /** The exit code the envelope reports; `1` unless given. */
     public readonly exitCode: number = TOOL_EXIT_CODES.failure,
+    /** Optional structured context, carried into `error.details`. */
     public readonly details?: unknown,
   ) {
     super(message);

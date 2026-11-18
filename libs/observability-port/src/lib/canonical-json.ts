@@ -154,6 +154,10 @@ function serialize(value: unknown, stack: object[]): string {
   }
 }
 
+/**
+ * The RFC 8785 canonical JSON of `value`. Throws for anything with no JSON form; an object member
+ * whose value is `undefined` is treated as absent.
+ */
 export function canonicalJson(value: unknown): string {
   return serialize(value, []);
 }

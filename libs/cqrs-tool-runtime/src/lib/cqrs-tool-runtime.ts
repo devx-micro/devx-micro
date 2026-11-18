@@ -30,6 +30,7 @@ import {
 const isInputObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
+/** Everything a {@link CqrsToolRuntime} is built from: the buses, the operations, and optional collaborators. */
 export interface CqrsToolRuntimeOptions {
   /**
    * The REPL's session variables. Optional: a runtime without it runs every operation,
@@ -527,8 +528,15 @@ function fromDomainError(error: unknown): ToolRuntimeError {
   );
 }
 
+/**
+ * Parses CLI-style arguments into an operation name and its input: `<operation> [--key value]
+ * [--json '{…}'] [--json-file <path>]`. A bare `--flag` is `true`; a repeated key accumulates into an
+ * array. Throws a {@link ToolRuntimeError} at exit 2 for malformed arguments.
+ */
 export function parseToolArguments(arguments_: readonly string[]): {
+  /** The operation name (the first argument). */
   readonly operation: string;
+  /** The input built from the flags and JSON payloads. */
   readonly input: Record<string, unknown>;
 } {
   const [operation, ...rest] = arguments_;

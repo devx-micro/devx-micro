@@ -10,6 +10,7 @@ import { isContentId, type ContentId } from './content-id';
 import type { Confidence, ResultRecord } from './record';
 import { requirementId } from './requirement';
 
+/** The schema version of contract and iteration records. A changed field or meaning bumps it. */
 export const INFERENCE_SCHEMA_VERSION = 1;
 
 /**
@@ -18,23 +19,34 @@ export const INFERENCE_SCHEMA_VERSION = 1;
  * recorded as `failure` with the error class as evidence.
  */
 export type ContractEnforcement = 'observe' | 'refuse';
+/** What enforcement a seam uses when none is configured: `'observe'`. */
 export const DEFAULT_CONTRACT_ENFORCEMENT: ContractEnforcement = 'observe';
 
+/** The verdicts an evaluator can give for one requirement. `not-evaluated` means nobody decided it. */
 export const VERDICTS = ['met', 'not-met', 'not-evaluated'] as const;
+/** One of {@link VERDICTS}. */
 export type Verdict = (typeof VERDICTS)[number];
 
+/** Who or what produced a verdict: a rule, a model or a person. */
 export const EVALUATOR_KINDS = ['deterministic', 'model', 'human'] as const;
+/** One of {@link EVALUATOR_KINDS}. */
 export type EvaluatorKind = (typeof EVALUATOR_KINDS)[number];
 
+/** The party that gave a verdict. */
 export interface Evaluator {
+  /** Whether the verdict came from a rule, a model or a person. */
   readonly kind: EvaluatorKind;
+  /** A stable name for the evaluator: a rule id, a model id, or a person's handle. */
   readonly identity: string;
   /** True only when `kind` is `model` and the identity is the model that produced the output. */
   readonly selfEvaluated: boolean;
 }
 
+/** The verdict on one requirement within one iteration. */
 export interface EvaluationEntry {
+  /** The requirement this entry decides. */
   readonly requirementId: ContentId;
+  /** `met`, `not-met` or `not-evaluated`. */
   readonly verdict: Verdict;
   /** A content id or a short factual statement; required for `met` and `not-met`. */
   readonly evidence?: string;
@@ -42,13 +54,19 @@ export interface EvaluationEntry {
   readonly evaluator?: Evaluator;
 }
 
+/** Counts of each verdict across one iteration's entries; see {@link summarizeEvaluation}. */
 export interface EvaluationSummary {
+  /** Entries with verdict `met`. */
   readonly met: number;
+  /** Entries with verdict `not-met`. */
   readonly notMet: number;
+  /** Entries with verdict `not-evaluated`. */
   readonly notEvaluated: number;
 }
 
+/** The two outcomes of deciding an iteration. */
 export const ITERATION_DECISIONS = ['accepted', 'rejected'] as const;
+/** One of {@link ITERATION_DECISIONS}. */
 export type IterationDecision = (typeof ITERATION_DECISIONS)[number];
 
 /** Why an iteration was decided as it was; `unevaluable` is the code for a run with nothing evaluable. */
@@ -58,27 +76,40 @@ export const DECISION_REASONS = [
   'unevaluable',
   'no-requirements',
 ] as const;
+/** One of {@link DECISION_REASONS}. */
 export type DecisionReason = (typeof DECISION_REASONS)[number];
 
+/** One requirement of a contract. */
 export interface RequirementRecord {
+  /** The identity of the claim; see `requirementId()`. */
   readonly requirementId: ContentId;
+  /** The requirement text as written. */
   readonly text: string;
 }
 
+/** Where an assumption came from: written in the step (`declared`) or added by the model (`stated-by-model`). */
 export const ASSUMPTION_ORIGINS = ['declared', 'stated-by-model'] as const;
+/** An assumption the run proceeded on. */
 export interface AssumptionRecord {
+  /** The assumption as stated. */
   readonly text: string;
+  /** Who stated it. */
   readonly origin: (typeof ASSUMPTION_ORIGINS)[number];
 }
 
 /** Its content id is the `contractRef`, shared by every run that uses it. */
 export interface ContractRecord {
+  /** The record schema version; always {@link INFERENCE_SCHEMA_VERSION}. */
   readonly schemaVersion: typeof INFERENCE_SCHEMA_VERSION;
+  /** The role the model was asked to take. */
   readonly role: string;
+  /** What the step is for. Omitted when the step states none. */
   readonly goal?: string;
+  /** What the output must satisfy, in order of first appearance. */
   readonly requirements: readonly RequirementRecord[];
   /** Content id of the stored input. Absent only when it was withheld (see `withheld`). */
   readonly input?: ContentId;
+  /** Assumptions the run proceeded on. */
   readonly assumptions: readonly AssumptionRecord[];
   /** Content id of the instruction text in force: a changed instruction is a different contract. */
   readonly instructionRef?: ContentId;
@@ -86,41 +117,64 @@ export interface ContractRecord {
   readonly withheld?: Readonly<Record<string, string>>;
 }
 
+/** The evaluated result of one attempt within an inference run. */
 export interface IterationRecord {
+  /** The record schema version; always {@link INFERENCE_SCHEMA_VERSION}. */
   readonly schemaVersion: typeof INFERENCE_SCHEMA_VERSION;
+  /** Always `inference-run`. */
   readonly kind: 'inference-run';
+  /** The content id of the run's {@link ContractRecord}. */
   readonly contractRef: ContentId;
+  /** Identifies the run; also the correlation id of its events. */
   readonly runId: string;
   /** 1-based. */
   readonly iteration: number;
+  /** Content id of the stored output. Absent when it was withheld (see `withheld`). */
   readonly outputRef?: ContentId;
+  /** One entry per requirement, in contract order. */
   readonly evaluation: readonly EvaluationEntry[];
+  /** When the iteration was evaluated, as UTC ISO-8601. */
   readonly timestamp: string;
+  /** The verdict counts of `evaluation`. */
   readonly evaluationSummary: EvaluationSummary;
+  /** True when any requirement is `not-evaluated`. */
   readonly partial: boolean;
+  /** Present only when it can be derived; see {@link derivedConfidence}. */
   readonly confidence?: Confidence;
+  /** Whether this iteration was accepted. */
   readonly decision: IterationDecision;
+  /** Why it was decided that way. */
   readonly reason: DecisionReason;
+  /** Present only when a ref was replaced by redaction: ref name to reason. */
   readonly withheld?: Readonly<Record<string, string>>;
 }
 
-/** the part of the completion record that lives in `detail`. */
+/** The part of the completion record that lives in `detail`. */
 export interface InferenceRunDetail {
+  /** The content id of the run's contract. */
   readonly contractRef: ContentId;
+  /** The content ids of the stored iteration records. */
   readonly iterationRefs: readonly ContentId[];
+  /** The most iterations the run was allowed. */
   readonly iterationCeiling: number;
+  /** Whether the last iteration was accepted. */
   readonly finalDecision: IterationDecision;
+  /** Who the run was escalated to, if it was. */
   readonly escalatedTo?: string;
+  /** False for a contract with no requirements or a duplicate one. */
   readonly contractComplete: boolean;
   /** That of the final iteration; omitted when no iteration ran. */
   readonly partial?: boolean;
   /** Token counts, present only when the harness reported them for a run outside our dispatch port. Never `0` for "unknown". */
   readonly usage?: {
+    /** Tokens the model read. */
     readonly inputTokens?: number;
+    /** Tokens the model wrote. */
     readonly outputTokens?: number;
   };
 }
 
+/** Counts the verdicts in `entries`. */
 export function summarizeEvaluation(
   entries: readonly EvaluationEntry[],
 ): EvaluationSummary {
@@ -143,11 +197,17 @@ export function derivedConfidence(
   return denominator === 0 ? undefined : summary.met / denominator;
 }
 
+/** What {@link decideIteration} answers. */
 export interface IterationDecisionResult {
+  /** Accepted or rejected. */
   readonly decision: IterationDecision;
+  /** Why. */
   readonly reason: DecisionReason;
+  /** The verdict counts the decision was made from. */
   readonly summary: EvaluationSummary;
+  /** True when any entry is `not-evaluated`. */
   readonly partial: boolean;
+  /** `{ derived }` when it can be computed; omitted otherwise. */
   readonly confidence?: Confidence;
 }
 
@@ -493,23 +553,33 @@ export function validateIteration(input: unknown): readonly string[] {
   });
 }
 
+/** The facts {@link completeRun} turns into an overall result. */
 export interface CompleteRunInput {
+  /** The content id of the run's contract. */
   readonly contractRef: ContentId;
+  /** Whether the contract was complete (had requirements, none duplicated). */
   readonly contractComplete: boolean;
   /** The `requirementId`s that appeared more than once in the step's requirements. */
   readonly duplicates: readonly string[];
+  /** The most iterations the run was allowed. */
   readonly iterationCeiling: number;
+  /** Whether the run was escalated. */
   readonly escalated: boolean;
+  /** Who it was escalated to. */
   readonly escalatedTo?: string;
   /** The last iteration, with its stored content id; absent when no iteration ran. */
   readonly iteration?: IterationRecord;
+  /** The content id under which `iteration` was stored. */
   readonly iterationRef?: ContentId;
   /** An error class from dispatch itself (`dispatch-failed`, `tool-budget-exceeded`, ...). */
   readonly failureClass?: string;
 }
 
+/** What {@link completeRun} answers: the two halves of the run's completion observation. */
 export interface CompletedRun {
+  /** The observation's `result`. */
   readonly result: ResultRecord;
+  /** The observation's `detail`. */
   readonly detail: InferenceRunDetail;
 }
 
