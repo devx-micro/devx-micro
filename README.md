@@ -15,6 +15,7 @@ An [Nx](https://nx.dev) workspace for shared, reusable TypeScript libraries, pub
 | [`@devx-micro/app-repl`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-repl)                   | The interactive transport: a prompt with completion, help and session variables.                                                       |
 | [`@devx-micro/app-sidecar`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-sidecar)             | The JSON-lines transport, server (`runJsonLinesDriver`) and client (`SidecarClient`).                                                  |
 | [`@devx-micro/app-http`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-http)                   | Renders that envelope over HTTP: exit code to status mapping, and `unwrap` to a response or `HttpException`.                           |
+| [`@devx-micro/app-main`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-main)                   | The process entry point: `defineApp` builds the CLI, REPL, sidecar and HTTP entry points and the `argv` mode dispatch.                 |
 | [`@devx-micro/app-observability`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-observability) | The recorder port, observation record shape, content addressing (RFC 8785 + SHA-256) and pure inference-run logic. No storage, no I/O. |
 
 Each package README documents installation, usage and behaviour. The full API reference is generated
@@ -34,7 +35,7 @@ flowchart LR
 ```
 
 Dependencies point one way: each transport (`app-cli`, `app-repl`, `app-sidecar`, `app-http`) →
-`app-runtime` → `app-observability`. The transports do not depend on each other.
+`app-runtime` → `app-observability`. The transports do not depend on each other. `app-main` sits above them: it composes `app-cli`, `app-repl` and `app-sidecar` into one process entry point and is not a transport.
 See [docs/architecture.md](docs/architecture.md) for the design decisions behind this.
 
 ## Getting started
