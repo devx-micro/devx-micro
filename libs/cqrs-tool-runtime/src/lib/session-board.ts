@@ -13,7 +13,12 @@ export interface SessionBoardPort {
   get(
     sessionId: string,
     name: string,
-  ): Promise<{ readonly found: boolean; readonly value?: unknown }>;
+  ): Promise<{
+    /** False when the variable is not set. */
+    readonly found: boolean;
+    /** The stored JSON value, when `found`. */
+    readonly value?: unknown;
+  }>;
   /** The names of every variable, sorted. */
   names(sessionId: string): Promise<readonly string[]>;
   /** Removes a variable; `false` if it was not set. */
@@ -22,7 +27,12 @@ export interface SessionBoardPort {
   attach(
     sessionId: string,
     board: string,
-  ): Promise<{ readonly attached: number; readonly skipped: number }>;
+  ): Promise<{
+    /** How many entries became variables. */
+    readonly attached: number;
+    /** How many entries were skipped because their key is not a valid variable name. */
+    readonly skipped: number;
+  }>;
   /** Saves this session's variables as the named board `board:<name>`; never overwrites one. */
   save(sessionId: string, name: string): Promise<void>;
   /** Ends the session: its board is discarded (a saved copy is unaffected). */

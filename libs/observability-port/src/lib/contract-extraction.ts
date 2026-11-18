@@ -22,18 +22,27 @@ import { wellFormed } from './canonical-json';
 import type { ContentId } from './content-id';
 import { requirementId } from './requirement';
 
+/** A requirement read out of step text. */
 export interface ExtractedRequirement {
+  /** The identity of the claim; see `requirementId()`. */
   readonly requirementId: ContentId;
+  /** The requirement text with its list marker or callout stripped. */
   readonly text: string;
 }
 
+/** What {@link extractContract} reads from step text. */
 export interface ExtractedContract {
+  /** The role passed in `options.role`, if any. */
   readonly role?: string;
+  /** The goal the step states, if any. */
   readonly goal?: string;
   /** In order of first appearance, with a repeated `requirementId` kept once. */
   readonly requirements: readonly ExtractedRequirement[];
+  /** Assumptions the step declares. */
   readonly assumptions: readonly {
+    /** The assumption as written. */
     readonly text: string;
+    /** Always `declared`: extraction cannot know a model's own assumptions. */
     readonly origin: 'declared';
   }[];
   /** The `requirementId`s that appeared more than once. */
@@ -44,7 +53,9 @@ export interface ExtractedContract {
   readonly incompleteReason?: string;
 }
 
+/** The most requirements read from one document; the rest are dropped. */
 export const MAX_REQUIREMENTS = 200;
+/** The longest a single requirement may be, in characters; longer text is cut. */
 export const MAX_ITEM_CHARS = 4000;
 const MAX_ASSUMPTIONS = 50;
 const MAX_LINE_CHARS = 20_000;
@@ -314,6 +325,13 @@ function firstParagraph(
   return collected.length > 0 ? clean(collected.join('\n')) : undefined;
 }
 
+/**
+ * Reads role, goal, requirements and assumptions out of step text. Pure and never throws: a
+ * document that cannot be parsed yields an incomplete contract with an `incompleteReason`.
+ *
+ * @param text - The step's Markdown.
+ * @param options - `role` is passed through to the result.
+ */
 export function extractContract(
   text: string,
   options: { readonly role?: string } = {},

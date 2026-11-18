@@ -14,6 +14,11 @@ import { VARIABLE_NAME } from './session-board';
  * happens on the parsed object, so it is the JSON value itself.
  */
 
+/**
+ * A classified REPL line: `vars`, `unset $name`, `board attach <name>`, `board save <name>`,
+ * `set $name = <operation line>`, or any other line, which is an `operation`. `name` and `board` are
+ * variable and board names; `line` is the operation line to dispatch.
+ */
 export type ReplCommand =
   | { readonly kind: 'vars' }
   | { readonly kind: 'unset'; readonly name: string }
@@ -83,8 +88,11 @@ const REFERENCE = new RegExp(
   `^\\$(${VARIABLE_NAME.source.slice(1, -1)})((?:\\.[A-Za-z0-9_-]+|\\[\\d+\\])*)$`,
 );
 
+/** A parsed `$name.field[0]` reference. */
 export interface Reference {
+  /** The variable name, without the `$`. */
   readonly name: string;
+  /** The path into its value: field names and array indexes, in order. */
   readonly path: readonly (string | number)[];
   /** As typed, for messages. */
   readonly text: string;
@@ -95,9 +103,12 @@ export interface Reference {
  * `$$x` is the literal `$x`. Anything else starting with `$` that does not parse is refused rather
  * than passed through, because `$x..y` is a typo and passing it on would send a literal nobody meant.
  */
-export function referenceOf(
-  word: string,
-): Reference | { readonly literal: string } | undefined {
+export function referenceOf(word: string):
+  | Reference
+  | {
+      /** The text to use as-is: the word without its leading `$`. */ readonly literal: string;
+    }
+  | undefined {
   if (!word.startsWith('$')) return undefined;
   if (word.startsWith('$$')) return { literal: word.slice(1) };
   const match = REFERENCE.exec(word);
@@ -144,9 +155,13 @@ export function followPath(reference: Reference, value: unknown): unknown {
   return current;
 }
 
-export type VariableLookup = (
-  name: string,
-) => Promise<{ readonly found: boolean; readonly value?: unknown }>;
+/** Looks a session variable up by name; `found: false` when it is not set. */
+export type VariableLookup = (name: string) => Promise<{
+  /** False when the variable is not set. */
+  readonly found: boolean;
+  /** The stored JSON value, when `found`. */
+  readonly value?: unknown;
+}>;
 
 async function resolve(
   reference: Reference,
@@ -222,7 +237,9 @@ export async function bindOperationLine(
   line: string,
   lookup: VariableLookup | undefined,
 ): Promise<{
+  /** The operation name. */
   readonly operation: string;
+  /** The input, with every reference replaced by the value it names. */
   readonly input: Record<string, unknown>;
 }> {
   // 🔴 With no session board bound there are no variables, so no word is a reference: a `$5` or a

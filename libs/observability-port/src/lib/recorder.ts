@@ -21,6 +21,7 @@ export interface RecordOptions {
   readonly correlationId?: string;
 }
 
+/** The port through which a seam records what it observed. Bind an implementation at the composition root. */
 export interface Recorder {
   /**
    * Record one observed unit. Resolves to the content id of the stored observation, or `undefined`
@@ -35,7 +36,9 @@ export interface Recorder {
 
 /** What storing an input, output or contract artifact answers: its content id, or why it was withheld. */
 export type StoredArtifact =
+  /** Stored: the artifact's content id. */
   | { readonly ref: ContentId }
+  /** Not stored: the reason it was withheld. */
   | { readonly withheld: string };
 
 /**
@@ -43,7 +46,9 @@ export type StoredArtifact =
  * iteration. A `Recorder` that lacks them (the no-op recorder) simply means inference runs are not observed.
  */
 export interface InferenceRecorder extends Recorder {
+  /** Stores text (an input or output) by content id, or reports why it was withheld. */
   storeArtifact(text: string): Promise<StoredArtifact>;
+  /** Stores a run's contract by content id, or reports why it was withheld. */
   storeContract(contract: ContractRecord): Promise<StoredArtifact>;
   /**
    * Store an iteration record and emit its `observability.inference.iteration-evaluated` event, once per
@@ -52,6 +57,7 @@ export interface InferenceRecorder extends Recorder {
   recordIteration(iteration: IterationRecord): Promise<ContentId | undefined>;
 }
 
+/** True when `recorder` can also store inference artifacts, contracts and iterations. */
 export function isInferenceRecorder(
   recorder: Recorder | undefined,
 ): recorder is InferenceRecorder {
@@ -64,6 +70,7 @@ export function isInferenceRecorder(
   );
 }
 
+/** A recorder that stores nothing and resolves `undefined`; the default when none is bound. */
 export const noopRecorder: Recorder = {
   record: async () => undefined,
 };
@@ -76,13 +83,17 @@ export interface Clock {
   monotonicMs(): number;
 }
 
+/** The real clocks: `Date` for timestamps and `performance.now()` for durations. */
 export const systemClock: Clock = {
   nowIso: () => new Date().toISOString(),
   monotonicMs: () => performance.now(),
 };
 
+/** What {@link startTiming}'s `finish()` measures. */
 export interface Timing {
+  /** When timing started, as UTC ISO-8601. */
   readonly beforeTimestamp: string;
+  /** When it finished, as UTC ISO-8601. May precede `beforeTimestamp` if the wall clock stepped back. */
   readonly afterTimestamp: string;
   /** Omitted — never `0` — when the monotonic clock could not measure it. */
   readonly durationMs?: number;
@@ -93,13 +104,16 @@ export interface Timing {
  * subtracting the two timestamps, because the wall clock can step: `afterTimestamp` may precede
  * `beforeTimestamp`, and that is recorded as it happened.
  *
- * 🔴 **A bad reading never throws.** A failure to record must not change the observed unit's own result
- *, and `finish()` runs in the unit's path. A monotonic reading that is not a finite number,
+ * 🔴 **A bad reading never throws.** A failure to record must not change the observed unit's own result,
+ * and `finish()` runs in the unit's path. A monotonic reading that is not a finite number,
  * or goes backwards, is a broken reading: the duration is **omitted**, not recorded as a negative or a
  * zero. A `Clock` whose methods themselves throw is a programming error in the injected dependency, not a
  * reading, and propagates: there is no timestamp to record, and swallowing it would hide the bug.
  */
-export function startTiming(clock: Clock = systemClock): { finish(): Timing } {
+export function startTiming(clock: Clock = systemClock): {
+  /** Stops timing and returns the timestamps and, when measurable, the duration. */
+  finish(): Timing;
+} {
   const beforeTimestamp = clock.nowIso();
   const startedAt = clock.monotonicMs();
   return {

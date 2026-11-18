@@ -6,8 +6,10 @@
 import { canonicalJson } from './canonical-json';
 import { isContentId, type ContentId } from './content-id';
 
+/** The record schema version. A new field or a changed meaning bumps it. */
 export const OBSERVATION_SCHEMA_VERSION = 1;
 
+/** The kinds of unit that can be observed. */
 export const OBSERVATION_KINDS = [
   'operation',
   'workflow-step',
@@ -15,16 +17,23 @@ export const OBSERVATION_KINDS = [
   'dispatch',
   'inference-run',
 ] as const;
+/** One of {@link OBSERVATION_KINDS}. */
 export type ObservationKind = (typeof OBSERVATION_KINDS)[number];
 
+/** How an observed unit ended. */
 export const OUTCOMES = ['success', 'failure', 'blocked', 'skipped'] as const;
+/** One of {@link OUTCOMES}. */
 export type Outcome = (typeof OUTCOMES)[number];
 
+/** Which model produced a result. */
 export interface ModelRef {
+  /** Who serves the model, e.g. a vendor or a local runtime. */
   readonly provider: string;
+  /** The provider's id for the model. */
   readonly modelId: string;
   /** Present only when the provider reported it. */
   readonly version?: string;
+  /** Whether the call ran on this machine or in the cloud. */
   readonly route: 'local' | 'cloud';
 }
 
@@ -36,7 +45,9 @@ export interface Confidence {
   readonly derived?: number;
 }
 
+/** How a unit ended, and the evidence for it. */
 export interface ResultRecord {
+  /** `success`, `failure`, `blocked` or `skipped`. */
   readonly outcome: Outcome;
   /** Content ids or short factual strings. Required to be non-empty for `failure` and `blocked`. */
   readonly evidence: readonly string[];
@@ -48,15 +59,21 @@ export interface ResultRecord {
   readonly confidence?: Confidence;
 }
 
+/** One observed unit of work, as stored. Seams hand a recorder an {@link ObservationInput} instead. */
 export interface ObservationRecord {
+  /** Always {@link OBSERVATION_SCHEMA_VERSION}. */
   readonly schemaVersion: typeof OBSERVATION_SCHEMA_VERSION;
+  /** What sort of unit this was. */
   readonly kind: ObservationKind;
   /** The tool, CLI or role that ran it. */
   readonly operator: string;
+  /** The operation observed, e.g. `note.get`. */
   readonly operation: string;
+  /** Present only for model-produced results. */
   readonly model?: ModelRef;
   /** UTC ISO-8601. */
   readonly beforeTimestamp: string;
+  /** When the unit finished, as UTC ISO-8601. */
   readonly afterTimestamp: string;
   /** Whole-unit wall time from the monotonic clock. Omitted — never `0` — when not measured. */
   readonly durationMs?: number;
@@ -70,6 +87,7 @@ export interface ObservationRecord {
   readonly detail?: Readonly<Record<string, unknown>>;
   /** Present only when a payload was withheld: ref name to reason. */
   readonly withheld?: Readonly<Record<string, string>>;
+  /** How the unit ended. */
   readonly result: ResultRecord;
 }
 

@@ -24,6 +24,7 @@ export function describeValue(value: unknown): string {
   return `a ${typeof value}`;
 }
 
+/** Throws `INVALID_INPUT` at exit 2 with `message`. For use in `validate` hooks. */
 export function invalidInput(message: string): never {
   throw new ToolRuntimeError('INVALID_INPUT', message, TOOL_EXIT_CODES.usage);
 }
@@ -79,11 +80,13 @@ export function parsedWholeNumber(value: unknown): number | null {
 export interface InputProbe {
   /** Hand this to `validate`, not the original. */
   readonly input: Record<string, unknown>;
+  /** Whether the hook has looked at `key` so far. */
   readonly wasRead: (key: string) => boolean;
   /** Every key the hook looked at — its argument vocabulary, absent optionals included. */
   readonly readKeys: () => readonly string[];
 }
 
+/** Wraps `received` so that every key a `validate` hook reads is recorded. See {@link InputProbe}. */
 export function probeInput(received: Record<string, unknown>): InputProbe {
   const read = new Set<string>();
 
