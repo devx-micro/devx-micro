@@ -10,7 +10,7 @@ export default defineConfig({
   plugins: [swcDecoratorMetadata()],
   resolve: { alias: workspaceAliases() },
   test: {
-    ...testDefaults('cqrs-tool-runtime'),
+    ...testDefaults('app-observability'),
     include: ['src/**/*.spec.ts'],
   },
 });

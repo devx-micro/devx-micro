@@ -14,7 +14,7 @@
  * one-shot process with nothing else alive exit silently, with code 0, before the answer is written.
  */
 export interface BoundedRecordingOptions {
-  /** Named in the one stderr line written when the breaker trips, e.g. `cqrs-tool-runtime`. */
+  /** Named in the one stderr line written when the breaker trips, e.g. `app-runtime`. */
   readonly label: string;
   /** How long to wait for the recorder before carrying on anyway (default 2000 ms). */
   readonly timeoutMs?: number;

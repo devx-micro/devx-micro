@@ -8,11 +8,11 @@ An [Nx](https://nx.dev) workspace for shared, reusable TypeScript libraries, pub
 
 ## Packages
 
-| Package                                                                                                          | What it is                                                                                                                             |
-| ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@devx-micro/cqrs-tool-runtime`](https://github.com/devx-micro/devx-micro/tree/main/libs/cqrs-tool-runtime)     | One dispatch path for a NestJS CQRS app, exposed as a CLI, REPL and JSON-lines sidecar, answering with a uniform result envelope.      |
-| [`@devx-micro/cqrs-http-transport`](https://github.com/devx-micro/devx-micro/tree/main/libs/cqrs-http-transport) | Renders that envelope over HTTP: exit code to status mapping, and `unwrap` to a response or `HttpException`.                           |
-| [`@devx-micro/observability-port`](https://github.com/devx-micro/devx-micro/tree/main/libs/observability-port)   | The recorder port, observation record shape, content addressing (RFC 8785 + SHA-256) and pure inference-run logic. No storage, no I/O. |
+| Package                                                                                                      | What it is                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@devx-micro/app-runtime`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-runtime)             | One dispatch path for a NestJS CQRS app, exposed as a CLI, REPL and JSON-lines sidecar, answering with a uniform result envelope.      |
+| [`@devx-micro/app-http`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-http)                   | Renders that envelope over HTTP: exit code to status mapping, and `unwrap` to a response or `HttpException`.                           |
+| [`@devx-micro/app-observability`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-observability) | The recorder port, observation record shape, content addressing (RFC 8785 + SHA-256) and pure inference-run logic. No storage, no I/O. |
 
 Each package README documents installation, usage and behaviour. The full API reference is generated
 with TypeDoc (see [Documentation](#documentation)).
@@ -32,7 +32,7 @@ with TypeDoc (see [Documentation](#documentation)).
                                      └───────────────┘       └───────────────────┘
 ```
 
-Dependencies point one way: `cqrs-http-transport` → `cqrs-tool-runtime` → `observability-port`.
+Dependencies point one way: `app-http` → `app-runtime` → `app-observability`.
 See [docs/architecture.md](docs/architecture.md) for the design decisions behind this.
 
 ## Getting started
@@ -48,8 +48,8 @@ npm run lint
 npm run format:check
 ```
 
-Run a single package's task with Nx, e.g. `npx nx test cqrs-tool-runtime` or
-`npx nx build observability-port`. `npm run graph` opens the project graph.
+Run a single package's task with Nx, e.g. `npx nx test app-runtime` or
+`npx nx build app-observability`. `npm run graph` opens the project graph.
 
 ### Layout
 

@@ -4,7 +4,7 @@ This workspace holds three small libraries that together give a NestJS CQRS appl
 observable, multi-transport tool surface.
 
 ```
-cqrs-http-transport ──► cqrs-tool-runtime ──► observability-port
+app-http ──► app-runtime ──► app-observability
 ```
 
 A package may depend only on packages to its right (and on `@nestjs/*` and third-party packages).
@@ -17,26 +17,26 @@ Nx tags all three `scope:shared`, `type:util`.
 Anything a library needs from the application is expressed as a **port**: an interface declared in
 the library and implemented by the consumer. Examples:
 
-- `ToolBus` (`cqrs-tool-runtime`): anything with `execute(request): Promise<unknown>`. Nest's real
+- `ToolBus` (`app-runtime`): anything with `execute(request): Promise<unknown>`. Nest's real
   `CommandBus`/`QueryBus` satisfy it, and so does a test double.
-- `SessionBoardPort` (`cqrs-tool-runtime`): REPL session variables, bound by the app. Without one,
+- `SessionBoardPort` (`app-runtime`): REPL session variables, bound by the app. Without one,
   every operation still runs.
-- `Recorder`, `InferenceRecorder` and `Clock` (`observability-port`): storage and time, bound by the
+- `Recorder`, `InferenceRecorder` and `Clock` (`app-observability`): storage and time, bound by the
   app's composition root. `noopRecorder` is the safe default.
 
 ### 2. One envelope, many transports
 
 Every transport calls `CqrsToolRuntime.dispatch`, which resolves (never rejects) to a `ToolEnvelope`.
 Transports differ only in how they _render_ it: the CLI prints it and returns `exitCode`; the sidecar
-writes a line; the REPL pretty-prints it; HTTP maps it to a status (`cqrs-http-transport`).
+writes a line; the REPL pretty-prints it; HTTP maps it to a status (`app-http`).
 
 Three statuses exist because there are three outcomes: `success`, `error`, and `incomplete` (a
 resumable sequence that stopped part-way). Collapsing `incomplete` into either of the others loses
 the one thing a caller needs: where to resume.
 
-`cqrs-http-transport` is a separate package so the status mapping is written once (several apps
+`app-http` is a separate package so the status mapping is written once (several apps
 duplicating it is how the CLI comes to answer exit code 2 while HTTP answers 500) without making
-`cqrs-tool-runtime` depend on `@nestjs/common`.
+`app-runtime` depend on `@nestjs/common`.
 
 ### 3. Refuse, don't coerce
 
@@ -66,7 +66,7 @@ Unmeasured durations, latencies and confidences are **omitted**, never `0`. Vali
 both honour this; the validators cannot tell a measured `0` from a fabricated one, so it is the
 emitter's responsibility.
 
-## Inference-run model (`observability-port`)
+## Inference-run model (`app-observability`)
 
 ```
 contract (role, goal, requirements, assumptions)

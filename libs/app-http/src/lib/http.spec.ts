@@ -3,7 +3,7 @@ import {
   TOOL_ENVELOPE_VERSION,
   TOOL_EXIT_CODES,
   type ToolEnvelope,
-} from '@devx-micro/cqrs-tool-runtime';
+} from '@devx-micro/app-runtime';
 
 import { statusForExitCode, unwrap } from './http';
 

@@ -10,7 +10,7 @@ export default defineConfig({
   plugins: [swcDecoratorMetadata()],
   resolve: { alias: workspaceAliases() },
   test: {
-    ...testDefaults('cqrs-http-transport'),
+    ...testDefaults('app-runtime'),
     include: ['src/**/*.spec.ts'],
   },
 });
