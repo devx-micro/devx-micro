@@ -15,6 +15,7 @@
     "skipLibCheck": true,
     "paths": {
       "@devx-micro/app-cli": ["./libs/app-cli/src/index.ts"],
+      "@devx-micro/app-main": ["./libs/app-main/src/index.ts"],
       "@devx-micro/app-repl": ["./libs/app-repl/src/index.ts"],
       "@devx-micro/app-sidecar": ["./libs/app-sidecar/src/index.ts"],
       "@devx-micro/app-observability": [

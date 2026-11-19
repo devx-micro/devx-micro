@@ -1,6 +1,6 @@
 # Architecture
 
-This workspace holds six small libraries that together give a NestJS CQRS application a uniform,
+This workspace holds seven small libraries that together give a NestJS CQRS application a uniform,
 observable, multi-transport tool surface.
 
 ```mermaid
@@ -10,10 +10,14 @@ flowchart LR
   sidecar[app-sidecar] --> runtime
   http[app-http] --> runtime
   runtime --> obs[app-observability]
+  main[app-main] --> cli
+  main --> repl
+  main --> sidecar
+  main --> runtime
 ```
 
 A package may depend only on packages to its right (and on `@nestjs/*` and third-party packages).
-The four transports do not depend on each other. Nx tags all six `scope:shared`, `type:util`.
+The four transports do not depend on each other. `app-main` is not a transport: it sits above `app-cli`, `app-repl` and `app-sidecar` and composes them into one process entry point (`defineApp`), so it depends on all three and on `app-runtime`. Nx tags all seven `scope:shared`, `type:util`.
 
 ## Design rules
 
