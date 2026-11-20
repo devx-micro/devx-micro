@@ -119,6 +119,19 @@ const STANDARD_FLAGS = [
 const withoutCliFlag = (argv: readonly string[]): readonly string[] =>
   argv.filter((argument) => argument !== '--cli');
 
+/**
+ * Runs a cleanup whose failure must not replace the error being reported. A `close` written as a plain
+ * function can throw synchronously or return nothing, so the call itself is inside the `try`, not
+ * just the promise it should return.
+ */
+const quietly = async (cleanup: () => unknown): Promise<void> => {
+  try {
+    await cleanup();
+  } catch {
+    // the caller is already reporting a more important failure
+  }
+};
+
 /** An operator's error, or anything thrown, as the text to show. */
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -164,7 +177,7 @@ export function defineApp<Options = undefined>(
   for (const { flag } of extraModes) {
     if (taken.has(flag)) {
       throw new Error(
-        `${name}: extra mode '${flag}' is already a mode (standard or repeated)`,
+        `${name}: extra mode '${flag}' is already taken (a standard flag, or another extra mode)`,
       );
     }
     taken.add(flag);
@@ -180,7 +193,7 @@ export function defineApp<Options = undefined>(
       result = await use(tool.runtime);
     } catch (error) {
       // The failure being reported is the one from `use`; a failing close must not replace it.
-      await tool.close().catch(() => undefined);
+      await quietly(() => tool.close());
       throw error;
     }
     await tool.close();
@@ -226,13 +239,13 @@ export function defineApp<Options = undefined>(
       const port =
         typeof address === 'object' && address ? address.port : requestedPort;
       Logger.log(
-        `${name} is serving on: http://localhost:${port}${http.helpPath ?? `/${prefix}/${name}/help`}`,
+        `${name} is serving on: http://localhost:${port}${http.helpPath ?? `/${[prefix, name, 'help'].filter(Boolean).join('/')}`}`,
       );
       return app;
     } catch (error) {
       // A half-started application holds modules, timers and possibly a socket; release them, and
       // report the failure that got us here rather than one from the cleanup.
-      await app.close().catch(() => undefined);
+      await quietly(() => app.close());
       throw error;
     }
   };

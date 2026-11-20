@@ -96,7 +96,7 @@ describe('defineApp', () => {
       for (const flag of ['--repl', '--sidecar', '--cli', '--help'] as const) {
         expect(() =>
           build({ extraModes: [{ flag, run: async () => undefined }] }),
-        ).toThrow(`extra mode '${flag}' is already a mode`);
+        ).toThrow(`extra mode '${flag}' is already taken`);
       }
     });
 
@@ -109,7 +109,7 @@ describe('defineApp', () => {
             { flag: '--hub', run },
           ],
         }),
-      ).toThrow(`extra mode '--hub' is already a mode`);
+      ).toThrow(`extra mode '--hub' is already taken`);
     });
   });
 
@@ -169,6 +169,52 @@ describe('defineApp', () => {
       await expect(app.runCli(['x'])).rejects.toThrow('real failure');
     });
 
+    it('waits for the close before rethrowing the transport error', async () => {
+      const { app, closed } = build();
+      const closing = deferred();
+      closed.mockReturnValue(closing.promise);
+      vi.mocked(runOneShot).mockRejectedValue(new Error('real failure'));
+      let settled = false;
+
+      const running = app.runCli(['x']).catch(() => (settled = true));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(settled).toBe(false);
+
+      closing.resolve();
+      await running;
+      expect(settled).toBe(true);
+    });
+
+    it('reports the transport error when close throws synchronously or returns nothing', async () => {
+      const { app, closed } = build();
+      vi.mocked(runOneShot).mockRejectedValue(new Error('real failure'));
+
+      closed.mockImplementation((() => {
+        throw new Error('sync close failure');
+      }) as never);
+      await expect(app.runCli(['x'])).rejects.toThrow('real failure');
+
+      closed.mockImplementation((() => undefined) as never);
+      await expect(app.runCli(['x'])).rejects.toThrow('real failure');
+    });
+
+    it('defaults argv to the process arguments', async () => {
+      const { app } = build();
+      const saved = process.argv;
+      process.argv = ['node', 'main', 'note.get', '--id', '9'];
+      try {
+        await app.runCli();
+      } finally {
+        process.argv = saved;
+      }
+
+      expect(runOneShot).toHaveBeenCalledWith(runtime, [
+        'note.get',
+        '--id',
+        '9',
+      ]);
+    });
+
     it('reports a close failure when the transport succeeded', async () => {
       const { app, closed } = build();
       closed.mockRejectedValue(new Error('close failed'));
@@ -195,6 +241,21 @@ describe('defineApp', () => {
       expect(sidecar[1]).toBe(input);
       expect(sidecar[2]).toBe(output);
       expect(closed).toHaveBeenCalledTimes(2);
+    });
+
+    it('default to the process streams', async () => {
+      const { app } = build();
+
+      await app.runRepl();
+      await app.runSidecar();
+
+      for (const call of [
+        vi.mocked(runInteractiveRepl).mock.calls[0]!,
+        vi.mocked(runJsonLinesDriver).mock.calls[0]!,
+      ]) {
+        expect(call[1]).toBe(process.stdin);
+        expect(call[2]).toBe(process.stdout);
+      }
     });
 
     it('close the tool when the transport throws', async () => {
@@ -334,6 +395,81 @@ describe('defineApp', () => {
       ]);
     });
 
+    it('keeps an empty global prefix instead of replacing it with api, and logs a clean help path', async () => {
+      const { app, http } = build({
+        http: {
+          createApp: async () => http.app as never,
+          portEnv: 'DEMO_APP_MAIN_PORT',
+          defaultPort: 3999,
+          globalPrefix: '',
+        },
+      });
+
+      await app.runApi();
+
+      expect(http.calls[0]).toBe('prefix:');
+      expect(logged).toEqual([
+        'demo is serving on: http://localhost:4321/demo/help',
+      ]);
+    });
+
+    it('builds the default help path from a custom prefix', async () => {
+      const { app, http } = build({
+        http: {
+          createApp: async () => http.app as never,
+          portEnv: 'DEMO_APP_MAIN_PORT',
+          defaultPort: 3999,
+          globalPrefix: 'v1',
+        },
+      });
+
+      await app.runApi();
+
+      expect(logged).toEqual([
+        'demo is serving on: http://localhost:4321/v1/demo/help',
+      ]);
+    });
+
+    it('falls back to the requested port when the server has no address', async () => {
+      const { app, http } = build();
+      http.app.getHttpServer = () => ({ address: () => null });
+
+      await app.runApi();
+
+      expect(logged).toEqual([
+        'demo is serving on: http://localhost:3999/api/demo/help',
+      ]);
+    });
+
+    it('waits for the application to close before rethrowing the startup error', async () => {
+      const { app, http } = build();
+      const closing = deferred();
+      http.app.listen.mockRejectedValue(new Error('EADDRINUSE'));
+      http.app.close.mockReturnValue(closing.promise);
+      let settled = false;
+
+      const running = app.runApi().catch(() => (settled = true));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(settled).toBe(false);
+
+      closing.resolve();
+      await running;
+      expect(settled).toBe(true);
+    });
+
+    it('reports the startup error when app.close throws synchronously or returns nothing', async () => {
+      const { app, http } = build();
+      http.app.listen.mockRejectedValue(new Error('EADDRINUSE'));
+
+      http.app.close.mockImplementation((() => {
+        throw new Error('sync close failure');
+      }) as never);
+      await expect(app.runApi()).rejects.toThrow('EADDRINUSE');
+
+      http.app.close.mockImplementation((() => undefined) as never);
+      await expect(app.runApi()).rejects.toThrow('EADDRINUSE');
+    });
+
     it('resolves to the application it started', async () => {
       const { app, http } = build();
       expect(await app.runApi()).toBe(http.app);
@@ -451,6 +587,17 @@ describe('defineApp', () => {
         { tag: 'a' },
         { tag: 'b' },
       ]);
+    });
+
+    it('lets --sidecar and an extra mode flag appear after other arguments', async () => {
+      const run = vi.fn(async () => undefined);
+      const { app } = build({ extraModes: [{ flag: '--hub', run }] });
+
+      await app.main(['x', '--sidecar']);
+      await app.main(['x', '--hub']);
+
+      expect(runJsonLinesDriver).toHaveBeenCalledTimes(1);
+      expect(run).toHaveBeenCalledTimes(1);
     });
 
     it('prefers the REPL when both --repl and --sidecar are given', async () => {
