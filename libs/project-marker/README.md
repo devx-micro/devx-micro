@@ -80,7 +80,7 @@ name is refused too).
 | `writeMarker(root, project?)`                   | Creates the marker; the project name defaults to the base name of `root`. Idempotent: an existing valid marker is returned unchanged with `created: false`.                                                                                                                                                       |
 | `appStatePathOf(root, app)`                     | `<root>/<directory>/<app>`. Computes the path only. Throws `TypeError` unless `app` is one plain path segment (not empty, not `.` or `..`, with no `/`, `\` or NUL byte, and no whitespace at either end) other than `project.json`, so an app's state can never land outside its own directory or on the marker. |
 | `markerDirectoryOf(root)`, `markerPathOf(root)` | The marker directory and file at `root`.                                                                                                                                                                                                                                                                          |
-| `migrateAppState(from, to)`                     | Moves a state directory: copy, verify, then remove. Not bound to a directory name.                                                                                                                                                                                                                                |
+| `migrateAppState(from, to)`                     | Moves a state directory with one atomic `rename`. Both paths must be absolute, on one filesystem. Not bound to a directory name.                                                                                                                                                                                  |
 
 ### Failures are loud, on purpose
 
@@ -99,50 +99,32 @@ name is refused too).
 
 ### Migrating state
 
-`migrateAppState(from, to)` **copies, verifies, and only then removes.** It compares the file list
-and the bytes of every file, because embedded stores keep lock, log and manifest files beside their
-data, and a copy missing any of them is corrupt rather than partial.
+`migrateAppState(from, to)` is **one atomic `rename`**: afterwards the directory is at `to` exactly
+as it was (bookkeeping files, links and modes included), and if it fails the source is exactly as
+it was. There is no copy, no verification pass and no half-moved state. The operating system does
+the hard checks, comparing the directories themselves rather than their spelling, so links and
+case-insensitive filesystems cannot defeat them.
 
-**Each path is resolved once, as the operating system resolves it**, and that one real path is
-used for every check and every change. This matters for `..`: `<link>/../x` means `x` beside the
-link's **target**, not beside the link, and a check that read it one way while the copy read it the
-other could put the copy inside the source. Links earlier in either path are followed as the
-operating system follows them; a link as the **last** component of either path is refused.
+**Both paths must be absolute.** A relative path, including `.`, `..` and the empty string, would
+be read against the current directory, so a caller's bug could move its own working tree. Build the
+path from a project root, as `appStatePathOf` does.
 
-It refuses, **before changing anything on either side** (the message ends "Nothing was changed"),
-when:
+**Same filesystem only.** `rename` cannot cross a device; that case is refused with the source
+untouched. Copy, verify and remove it yourself if you need it: it is a different operation with
+different failure modes.
 
+It refuses, leaving both sides as they were, when:
+
+- a path is not a non-empty absolute path;
 - `from` does not exist, is not a directory, or is itself a symbolic link;
-- `from` holds a **symbolic link** anywhere, or any other special file (pipe, socket, device). A link
-  cannot be verified by reading through it, and a copied link can dangle once the source is
-  removed, so links are refused rather than copied. Replace them with what they point to, or remove
-  them, and migrate again;
-- `to` is a **symbolic link**, even a dangling one or one to an empty directory. Name the directory
-  it points to instead; the link itself is never deleted;
-- `to` exists and is not a directory, or already holds files (merging two stores yields one that
-  opens and is wrong);
-- a component of `to`'s path is a file, or a link to nothing;
-- `to` uses `..` after a component that does not exist yet, so it has no single meaning;
-- `from` and `to` overlap: one inside the other, or the same directory, compared on the resolved
-  paths;
-- a path cannot be inspected, for example a directory in either tree that cannot be read
-  (`EACCES`). The message names the path and the error code.
+- `from` and `to` are the same directory, under any spelling or through a link;
+- `to` is inside `from`;
+- `to` already holds files (merging two stores yields one that opens and is wrong), or exists and
+  is a file or a link (neither is ever replaced);
+- `to` is on another filesystem.
 
-If creating the destination, the copy or its verification fails, the **source is untouched**, and:
-
-- if this call **created directories** for the destination (`to` and any missing parents), the
-  first one it created is **removed**, which removes the rest, so you can simply run it again. The
-  message names the directory it removed;
-- if it **created nothing** (for example, a parent could not be written), the message says
-  "nothing was created";
-- a destination that **already existed** (empty) is **left as it is**, and may hold a partial copy;
-  empty it before retrying;
-- if that cleanup itself fails, the message names what to remove before retrying.
-
-If only removing the source fails, the copy is complete and verified, and the source may be partly
-removed; the error says so, and the rest must be removed by hand.
-
-Every one of these failures throws `WorkspaceError`, and its message says which case it was.
+Missing parents of `to` are created, and removed again if the move then fails. Every refusal throws
+`WorkspaceError`, and its message says which case it was.
 
 `WorkspaceError` carries a `code` (`no-workspace` or `invalid-project-name`) so a transport can
 report it as itself rather than as a generic failure. Your own code may throw it too, for its own

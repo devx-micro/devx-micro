@@ -1,15 +1,5 @@
-import type { Stats } from 'node:fs';
-import {
-  cp,
-  lstat,
-  mkdir,
-  readFile,
-  readdir,
-  realpath,
-  rm,
-  stat,
-} from 'node:fs/promises';
-import { dirname, isAbsolute, join, parse, relative, sep } from 'node:path';
+import { lstat, mkdir, rename, rm } from 'node:fs/promises';
+import { dirname, isAbsolute } from 'node:path';
 
 import { WorkspaceError } from './marker';
 
@@ -19,10 +9,6 @@ export interface MigrationResult {
   readonly from: string;
   /** The destination directory, as given. */
   readonly to: string;
-  /** How many files were copied and verified. */
-  readonly files: number;
-  /** Their total size, in bytes. */
-  readonly bytes: number;
 }
 
 const messageOf = (error: unknown): string =>
@@ -31,421 +17,112 @@ const messageOf = (error: unknown): string =>
 const codeOf = (error: unknown): string =>
   (error as NodeJS.ErrnoException | undefined)?.code ?? 'unknown error';
 
-/**
- * Run a read-only inspection, turning any filesystem error into a {@link WorkspaceError} that names
- * the path and the error code. Inspection happens before anything is changed, so it says so.
- */
-async function inspecting<T>(path: string, read: () => Promise<T>): Promise<T> {
+/** `lstat`, or `undefined` when nothing is there. Any other failure is reported, not hidden. */
+async function statOrAbsent(path: string, role: string) {
   try {
-    return await read();
+    return await lstat(path);
   } catch (error) {
-    if (error instanceof WorkspaceError) throw error;
-    const where = (error as NodeJS.ErrnoException).path ?? path;
+    if (codeOf(error) === 'ENOENT' || codeOf(error) === 'ENOTDIR') {
+      return undefined;
+    }
     throw new WorkspaceError(
-      `Cannot inspect ${where} (${codeOf(error)}): ${messageOf(error)}. Nothing was changed.`,
+      `Cannot inspect the ${role} ${path} (${codeOf(error)}): ${messageOf(error)}. Nothing was changed.`,
     );
   }
 }
 
-/** Every entry under `root` that is not a directory, as sorted relative paths. */
-async function filesUnder(root: string): Promise<string[]> {
-  const found: string[] = [];
-  const walk = async (directory: string): Promise<void> => {
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
-      const path = join(directory, entry.name);
-      if (entry.isDirectory()) await walk(path);
-      else found.push(relative(root, path));
-    }
-  };
-  await walk(root);
-  return found.sort();
-}
-
-/**
- * The regular files under `from`, as sorted relative paths, refusing anything else.
- *
- * 🔴 **Symbolic links are refused, not followed and not copied.** A link cannot be verified by
- * reading through it: `fs.cp` rewrites a relative link as an absolute link back into the source,
- * which reads identically until the source is removed and then dangles. A verbatim copy is no
- * better for an absolute link into the source, or a relative one that leaves the tree. Refusing is
- * the one answer that cannot report success and lose data. Other special files (pipes, sockets,
- * devices) are not store contents either, and are refused for the same reason.
- */
-async function regularFilesUnder(
-  from: string,
-  suffix: '' | ' Nothing was changed.',
-): Promise<string[]> {
-  const found: string[] = [];
-  const walk = async (directory: string): Promise<void> => {
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
-      const path = join(directory, entry.name);
-      const name = relative(from, path);
-      if (entry.isSymbolicLink()) {
-        throw new WorkspaceError(
-          `Refusing to migrate ${from}: ${name} is a symbolic link, and a link cannot be verified ` +
-            'by reading through it. Replace it with the file or directory it points to, or ' +
-            `remove it, and migrate again.${suffix}`,
-        );
-      }
-      if (entry.isDirectory()) await walk(path);
-      else if (entry.isFile()) found.push(name);
-      else {
-        throw new WorkspaceError(
-          `Refusing to migrate ${from}: ${name} is not a regular file or directory.${suffix}`,
-        );
-      }
-    }
-  };
-  await walk(from);
-  return found.sort();
-}
-
-/** How {@link resolveOnce} found a path. */
-type Resolution =
-  /** The whole path exists. `path` is real; `link` says whether its LAST component is a link. */
-  | { kind: 'found'; path: string; link: boolean; stats: Stats }
-  /**
-   * The path does not exist. `path` is where it would be (real up to `firstMissing`, the first
-   * component that does not exist). `climbs` says a `..` follows a missing component.
-   */
-  | { kind: 'missing'; path: string; firstMissing: string; climbs: boolean }
-  /** A component other than the last cannot be passed through. */
-  | {
-      kind: 'blocked';
-      at: string;
-      why: 'is not a directory' | 'is a symbolic link to nothing';
-    };
-
-/**
- * Resolve `path` once, the way the operating system does, into one canonical absolute path.
- *
- * 🔴 **Why not `path.resolve` then `realpath`.** `resolve` removes `..` as text, but the operating
- * system applies `..` AFTER following a link: `<link>/..` is the parent of the link's TARGET. A
- * check that reads the path one way and a `mkdir` that reads it the other act on different
- * directories. So the path is walked one component at a time from the root, following each link as
- * the operating system would, and the result is used for every later step.
- *
- * The last component is examined but not followed, so a caller can refuse a link there. A `..`
- * after a component that does not exist has no meaning yet, and is reported as `climbs`.
- */
-async function resolveOnce(given: string): Promise<Resolution> {
-  // Join with the cwd as TEXT: `path.resolve` would already have removed `..`.
-  const absolute = isAbsolute(given) ? given : `${process.cwd()}${sep}${given}`;
-  const { root } = parse(absolute);
-  // On Windows both `/` and `\` separate components; on POSIX only `/` does, because `\` is a
-  // legal character in a file name and must be kept whole.
-  const split = process.platform === 'win32' ? /[\\/]+/ : /\/+/;
-  const segments = absolute
-    .slice(root.length)
-    .split(split)
-    .filter((segment) => segment !== '');
-
-  let current = await inspecting(root, () => realpath(root));
-  let firstMissing: string | undefined;
-  const missing: string[] = [];
-  let climbs = false;
-
-  for (const [index, segment] of segments.entries()) {
-    const last = index === segments.length - 1;
-    if (firstMissing !== undefined) {
-      if (segment === '..') climbs = true;
-      else if (segment !== '.') missing.push(segment);
-      continue;
-    }
-    if (segment === '.') continue;
-    if (segment === '..') {
-      // `current` is real, so its parent is what the operating system means by `..` here.
-      current = dirname(current);
-      continue;
-    }
-
-    const candidate = join(current, segment);
-    const stats = await inspecting(candidate, () =>
-      lstat(candidate).catch((error: NodeJS.ErrnoException) => {
-        if (error.code === 'ENOENT') return undefined;
-        throw error;
-      }),
+const requireAbsolute = (path: unknown, role: string): void => {
+  if (typeof path !== 'string' || path === '' || !isAbsolute(path)) {
+    throw new WorkspaceError(
+      `Refusing to migrate: the ${role} path must be a non-empty absolute path, got ` +
+        `${JSON.stringify(path) ?? String(path)}. A relative path would be read against the ` +
+        'current directory, which is almost never what was meant. Nothing was changed.',
     );
-    if (!stats) {
-      firstMissing = candidate;
-      missing.push(segment);
-      continue;
-    }
-    if (last) {
-      if (stats.isSymbolicLink()) {
-        // The caller refuses a link here; the path is only named, and `realpath` could fail on a
-        // dangling one, so report the link itself.
-        return { kind: 'found', path: candidate, link: true, stats };
-      }
-      // Canonicalise even the last component: on a case-insensitive filesystem the spelling the
-      // caller gave may differ from the name on disk, and every later check (the overlap test in
-      // particular) compares paths as text.
-      const real = await inspecting(candidate, () => realpath(candidate));
-      return { kind: 'found', path: real, link: false, stats };
-    }
-    if (stats.isSymbolicLink()) {
-      const target = await inspecting(candidate, () =>
-        realpath(candidate).catch((error: NodeJS.ErrnoException) => {
-          if (['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code ?? '')) {
-            return undefined;
-          }
-          throw error;
-        }),
-      );
-      if (target === undefined) {
-        return {
-          kind: 'blocked',
-          at: candidate,
-          why: 'is a symbolic link to nothing',
-        };
-      }
-      const targetStats = await inspecting(target, () => stat(target));
-      if (!targetStats.isDirectory()) {
-        return { kind: 'blocked', at: candidate, why: 'is not a directory' };
-      }
-      current = target;
-      continue;
-    }
-    if (!stats.isDirectory()) {
-      return { kind: 'blocked', at: candidate, why: 'is not a directory' };
-    }
-    // Walk in the path the operating system reports, not the spelling the caller gave: on a
-    // case-insensitive filesystem the two differ, and `current` feeds every later step, including
-    // the existing prefix of a missing path.
-    current = await inspecting(candidate, () => realpath(candidate));
   }
-
-  if (firstMissing !== undefined) {
-    return {
-      kind: 'missing',
-      path: join(current, ...missing),
-      firstMissing,
-      climbs,
-    };
-  }
-  // The path ended in `.` or `..` (or is the root): `current` is a real directory.
-  const stats = await inspecting(current, () => lstat(current));
-  return { kind: 'found', path: current, link: false, stats };
-}
-
-const isWithin = (child: string, parent: string): boolean => {
-  const rel = relative(parent, child);
-  return (
-    rel === '' ||
-    (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
-  );
 };
 
-/** Resolve the source, or refuse it. Returns its real path. */
-async function resolveSource(from: string): Promise<string> {
-  const source = await resolveOnce(from);
-  if (source.kind !== 'found') {
-    const why =
-      source.kind === 'blocked' ? ` (${source.at} ${source.why})` : '';
-    throw new WorkspaceError(
-      `Nothing to migrate: ${from} does not exist${why}. Nothing was changed.`,
-    );
-  }
-  if (source.link) {
-    throw new WorkspaceError(
-      `Refusing to migrate ${from}: it is a symbolic link. Migrate the directory it points to. ` +
-        'Nothing was changed.',
-    );
-  }
-  if (!source.stats.isDirectory()) {
-    throw new WorkspaceError(
-      `Refusing to migrate ${from}: it is not a directory. Nothing was changed.`,
-    );
-  }
-  return source.path;
-}
-
 /**
- * Resolve the destination, or refuse it. Returns its real path, and the first directory that
- * would have to be created for it (`undefined` when it already exists).
- */
-async function resolveDestination(
-  to: string,
-): Promise<{ path: string; firstMissing: string | undefined }> {
-  const destination = await resolveOnce(to);
-  if (destination.kind === 'blocked') {
-    throw new WorkspaceError(
-      `Refusing to migrate into ${to}: ${destination.at} ${destination.why}. Nothing was ` +
-        'changed.',
-    );
-  }
-  if (destination.kind === 'missing') {
-    if (destination.climbs) {
-      throw new WorkspaceError(
-        `Refusing to migrate into ${to}: it uses \`..\` after ${destination.firstMissing}, ` +
-          'which does not exist, so it has no single meaning. Nothing was changed.',
-      );
-    }
-    return { path: destination.path, firstMissing: destination.firstMissing };
-  }
-  // 🔴 Decided with `lstat`: a link here, even a dangling one, is refused and never deleted.
-  if (destination.link) {
-    throw new WorkspaceError(
-      `Refusing to migrate into ${to}: it is a symbolic link. Name the directory it points ` +
-        'to instead. Nothing was changed.',
-    );
-  }
-  if (!destination.stats.isDirectory()) {
-    throw new WorkspaceError(
-      `Refusing to migrate into ${to}: it exists and is not a directory. Nothing was changed.`,
-    );
-  }
-  return { path: destination.path, firstMissing: undefined };
-}
-
-/**
- * Move one app's on-disk state from one directory to another, for example from an old location
- * into {@link ProjectMarker.appStatePathOf}.
+ * Move one app's on-disk state directory to another place, for example from an old location into
+ * {@link ProjectMarker.appStatePathOf}.
  *
- * 🔴 **Copy, verify, then remove; never move then verify.** A failed verification after a move
- * leaves nothing to fall back to. Embedded databases keep bookkeeping files (lock, log, manifest,
- * "current" pointer) beside their data, and all of them are part of the store, so a migration that
- * copies "the data files" and skips the bookkeeping produces a **corrupt** store rather than a
- * partial one. That is why verification compares the file list and then the bytes of every file,
- * rather than counting files: a truncated or altered copy still has the right name.
+ * 🔴 **One `rename`, nothing else.** The move is a single atomic `rename(2)`: afterwards the
+ * directory is at `to` exactly as it was, links, modes and bookkeeping files included, and if it
+ * fails, the source is exactly as it was. There is no copy, no verification pass and no half-moved
+ * state. The operating system also does the hard checks: it refuses a destination inside the
+ * source or a non-empty destination, and it compares the directories themselves rather than their
+ * spelling, so case-insensitive filesystems and links cannot defeat it.
  *
- * 🔴 **Each path is resolved once, as the operating system resolves it**, and that one real path is
- * used for every check and every change. `<link>/..` is the parent of the link's target, not of the
- * link; reading it one way to check overlap and another way to copy is how a copy lands inside the
- * source.
+ * 🔴 **Both paths must be absolute.** A relative path (including `.`, `..` and the empty string)
+ * would be read against the current directory, so a caller's bug would move and delete its own
+ * working tree. Build the path from a project root, as {@link ProjectMarker.appStatePathOf} does.
  *
- * 🔴 **No symbolic links at either end.** A link anywhere inside the source, a source or
- * destination that is itself a link (even a dangling one), or a path that passes through a link to
- * nothing, is refused. A link cannot be verified by reading through it, a copied link can dangle
- * once the source is removed, and a link at the destination could be deleted by mistake. Links
- * EARLIER in either path are followed, as the operating system follows them.
+ * 🔴 **Same filesystem only.** `rename` cannot cross a device. A move that would is refused with
+ * the source untouched; copy it yourself, verify the copy, and remove the source. That is a
+ * different operation with different failure modes, and is not folded in here.
  *
- * **What each failure leaves behind.** Every failure throws {@link WorkspaceError}, and its message
- * says which case it was:
+ * Refused, with nothing changed on either side:
+ * - a path that is not a non-empty absolute path;
+ * - a source that does not exist, is not a directory, or is itself a symbolic link;
+ * - the same directory given twice (even under different spellings or through a link);
+ * - a destination inside the source;
+ * - a destination that is not absent or an empty directory;
+ * - a destination on another filesystem.
  *
- * - **Refused before any change; nothing is changed on either side:**
- *   - the source or destination path is empty;
- *   - the source does not exist, is not a directory, is a link, or holds a link or special file;
- *   - the destination is a link, exists and is not a directory, or already holds files;
- *   - a component of the destination's path is a file, or a link to nothing;
- *   - the destination uses `..` after a component that does not exist;
- *   - the two overlap (one inside the other, or the same directory);
- *   - a path cannot be inspected (for example `EACCES` on a directory in either tree).
- * - **Creating the destination, copying or verifying fails:** the source is **untouched**. If this
- *   call created directories for the destination, the first one it created (which holds any others
- *   it created) is **removed**, so the migration can simply be run again. A destination that
- *   existed (empty) before the call is **left as it is**, and may hold a partial copy; empty it
- *   before retrying. If nothing was created, the message says so. If the cleanup itself fails, the
- *   message names what to remove.
- * - **Removing the source fails, after a verified copy:** the copy is **complete**, and the source
- *   may be partly removed; remove the rest by hand.
- *
- * @param from - The directory to move. It must exist and hold only regular files and directories.
- * @param to - Where to move it. It must be absent or an empty directory, must not be a symbolic
- * link, and must not overlap `from`. Missing parent directories are created.
- * @returns What was moved, with `from` and `to` as given; the source has been removed.
- * @throws {@link WorkspaceError} in each case listed above.
+ * @param from - The directory to move.
+ * @param to - Where to move it. Missing parent directories are created, and are removed again if the
+ * move then fails.
+ * @returns `from` and `to` as given; the source no longer exists.
+ * @throws {@link WorkspaceError} in each case listed above, and for any other failure of the move,
+ * naming the path and the error code.
  */
 export async function migrateAppState(
   from: string,
   to: string,
 ): Promise<MigrationResult> {
-  // An empty path is not "the current directory": `resolveOnce` would join it to the cwd and
-  // migrate from, or into, the caller's own working tree. Refuse it before anything is read.
-  if (from === '') {
+  requireAbsolute(from, 'source (from)');
+  requireAbsolute(to, 'destination (to)');
+
+  const source = await statOrAbsent(from, 'source');
+  if (source === undefined) {
     throw new WorkspaceError(
-      'Refusing to migrate: the source path (from) is empty. Nothing was changed.',
+      `Refusing to migrate ${from}: it does not exist. Nothing was changed.`,
     );
   }
-  if (to === '') {
+  if (source.isSymbolicLink() || !source.isDirectory()) {
     throw new WorkspaceError(
-      'Refusing to migrate: the destination path (to) is empty. Nothing was changed.',
+      `Refusing to migrate ${from}: it is ${source.isSymbolicLink() ? 'a symbolic link' : 'not a directory'}. ` +
+        'Nothing was changed.',
     );
   }
 
-  const source = await resolveSource(from);
-  const { path: destination, firstMissing } = await resolveDestination(to);
-
-  if (isWithin(destination, source) || isWithin(source, destination)) {
+  const destination = await statOrAbsent(to, 'destination');
+  // `rename(a, a)` succeeds and moves nothing, which would report a move that did not happen.
+  if (
+    destination !== undefined &&
+    destination.ino === source.ino &&
+    destination.dev === source.dev
+  ) {
     throw new WorkspaceError(
-      `Refusing to migrate ${from} into ${to}: the two overlap (one is inside the other, or they ` +
-        'are the same directory). Nothing was changed.',
+      `Refusing to migrate ${from} into ${to}: they are the same directory. Nothing was changed.`,
     );
   }
-
-  const existed = firstMissing === undefined;
-  if (existed) {
-    const occupied = await inspecting(destination, () =>
-      filesUnder(destination),
-    );
-    if (occupied.length > 0) {
-      throw new WorkspaceError(
-        `Refusing to migrate into ${to}: it already contains ${occupied.length} file(s).\n` +
-          'Merging two stores produces one that opens and is wrong. Move or remove the ' +
-          'destination first. Nothing was changed.',
-      );
-    }
-  }
-
-  const files = await inspecting(source, () =>
-    regularFilesUnder(source, ' Nothing was changed.'),
-  );
 
   let created: string | undefined;
-  let bytes = 0;
   try {
-    try {
-      // The first directory `mkdir` actually created: removing it removes everything it created.
-      created = await mkdir(destination, { recursive: true });
-    } catch (error) {
-      // It may have created some directories before failing; the first missing one is ours.
-      if (firstMissing !== undefined) {
-        const now = await lstat(firstMissing).catch(() => undefined);
-        if (now) created = firstMissing;
-      }
-      throw new WorkspaceError(
-        `Creating ${destination} failed (${codeOf(error)}): ${messageOf(error)}.`,
-      );
-    }
-    try {
-      await cp(source, destination, {
-        recursive: true,
-        verbatimSymlinks: true,
-      });
-    } catch (error) {
-      throw new WorkspaceError(
-        `Copying ${source} to ${destination} failed (${codeOf(error)}): ${messageOf(error)}.`,
-      );
-    }
-
-    // Verify before removing anything. Bytes, not counts: a truncated copy has the right name.
-    // The source is listed again, so anything that appeared in it during the copy is caught too.
-    const listed = await regularFilesUnder(source, '');
-    const copied = await filesUnder(destination);
-    if (
-      listed.join('\n') !== files.join('\n') ||
-      copied.join('\n') !== files.join('\n')
-    ) {
-      throw new WorkspaceError(
-        `Migration verification failed: ${source} has ${listed.length} file(s), ${destination} ` +
-          `has ${copied.length}.`,
-      );
-    }
-    for (const file of files) {
-      const before = await readFile(join(source, file));
-      const after = await readFile(join(destination, file));
-      if (!before.equals(after)) {
-        throw new WorkspaceError(
-          `Migration verification failed: ${file} differs after copying.`,
-        );
-      }
-      bytes += before.byteLength;
-    }
+    // The first directory `mkdir` actually created: removing it removes everything it created.
+    created = await mkdir(dirname(to), { recursive: true });
   } catch (error) {
-    const cleanup = existed
-      ? `${destination} existed before this call and has been left as it is; it may hold a ` +
-        'partial copy, so empty it before retrying'
-      : created === undefined
+    throw new WorkspaceError(
+      `Creating the parent of ${to} failed (${codeOf(error)}): ${messageOf(error)}. ` +
+        'The source was not touched.',
+    );
+  }
+
+  try {
+    await rename(from, to);
+  } catch (error) {
+    const undone =
+      created === undefined
         ? 'nothing was created'
         : await rm(created, { recursive: true, force: true }).then(
             () => `${created}, which this call created, was removed`,
@@ -453,23 +130,19 @@ export async function migrateAppState(
               `${created}, which this call created, could not be removed ` +
               `(${messageOf(failure)}); remove it before retrying`,
           );
-    const reason =
-      error instanceof WorkspaceError
-        ? error.message
-        : `Migrating ${source} to ${destination} failed (${codeOf(error)}): ${messageOf(error)}.`;
+    const why =
+      codeOf(error) === 'EXDEV'
+        ? `${from} and ${to} are on different filesystems, which a rename cannot cross`
+        : codeOf(error) === 'ENOTEMPTY' || codeOf(error) === 'EEXIST'
+          ? `${to} already holds files (merging two stores yields one that opens and is wrong)`
+          : codeOf(error) === 'EINVAL'
+            ? `${to} is inside ${from}`
+            : codeOf(error) === 'ENOTDIR' || codeOf(error) === 'EISDIR'
+              ? `${to} exists and is not a directory (a file or a symbolic link is never replaced)`
+              : `the move failed (${codeOf(error)}): ${messageOf(error)}`;
     throw new WorkspaceError(
-      `${reason} The source has been left untouched; ${cleanup}.`,
+      `Refusing to migrate ${from} into ${to}: ${why}. The source was not touched; ${undone}.`,
     );
   }
-
-  try {
-    await rm(source, { recursive: true, force: true });
-  } catch (error) {
-    throw new WorkspaceError(
-      `The copy at ${destination} is complete and verified, but removing ${source} failed ` +
-        `(${codeOf(error)}): ${messageOf(error)}. ${source} may be partly removed; remove the ` +
-        'rest by hand.',
-    );
-  }
-  return { from, to, files: files.length, bytes };
+  return { from, to };
 }
