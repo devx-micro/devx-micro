@@ -1,11 +1,11 @@
 {
   "name": "@devx-micro/app-repl",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "commonjs",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
-    "@devx-micro/app-runtime": "0.3.0",
+    "@devx-micro/app-runtime": "0.4.0",
     "tslib": "^2.8.1"
   },
   "license": "MPL-2.0",
