@@ -1,5 +1,5 @@
-import { lstat, mkdir, rename, rm } from 'node:fs/promises';
-import { dirname, isAbsolute } from 'node:path';
+import { lstat, mkdir, rename, rmdir } from 'node:fs/promises';
+import { dirname, isAbsolute, sep } from 'node:path';
 
 import { WorkspaceError } from './marker';
 
@@ -39,7 +39,50 @@ const requireAbsolute = (path: unknown, role: string): void => {
         'current directory, which is almost never what was meant. Nothing was changed.',
     );
   }
+  // 🔴 `a/../b` names `b` only if `a` exists and is not a link; the operating system and a textual
+  // reading disagree otherwise, so the same-directory and inside-the-source checks cannot be
+  // trusted. Refuse it rather than guess; callers build paths from a root and never need it.
+  const separators = process.platform === 'win32' ? /[\\/]+/ : /\/+/;
+  if (path.split(separators).includes('..')) {
+    throw new WorkspaceError(
+      `Refusing to migrate: the ${role} path ${path} contains a ".." segment. Pass a path without ` +
+        'one. Nothing was changed.',
+    );
+  }
 };
+
+/** Parent directories of `path` that do not exist yet, shallowest first. */
+async function missingParentsOf(path: string): Promise<string[]> {
+  const missing: string[] = [];
+  for (let at = dirname(path); ; at = dirname(at)) {
+    try {
+      await lstat(at);
+      break;
+    } catch (error) {
+      if (codeOf(error) !== 'ENOENT') break; // `mkdir` will report the real problem
+      missing.unshift(at);
+    }
+    if (dirname(at) === at) break;
+  }
+  return missing;
+}
+
+/**
+ * Remove the directories this call created, deepest first, with `rmdir`: it refuses a directory
+ * that is not empty, so it can never delete what another process put there meanwhile. Returns the
+ * ones that could not be removed.
+ */
+async function removeEmpty(created: readonly string[]): Promise<string[]> {
+  const left: string[] = [];
+  for (const directory of [...created].reverse()) {
+    try {
+      await rmdir(directory);
+    } catch (error) {
+      if (codeOf(error) !== 'ENOENT') left.push(directory);
+    }
+  }
+  return left;
+}
 
 /**
  * Move one app's on-disk state directory to another place, for example from an old location into
@@ -61,16 +104,17 @@ const requireAbsolute = (path: unknown, role: string): void => {
  * different operation with different failure modes, and is not folded in here.
  *
  * Refused, with nothing changed on either side:
- * - a path that is not a non-empty absolute path;
+ * - a path that is not a non-empty absolute path, or that contains a `..` segment;
  * - a source that does not exist, is not a directory, or is itself a symbolic link;
  * - the same directory given twice (even under different spellings or through a link);
- * - a destination inside the source;
+ * - a destination that is the source or inside it;
  * - a destination that is not absent or an empty directory;
  * - a destination on another filesystem.
  *
  * @param from - The directory to move.
  * @param to - Where to move it. Missing parent directories are created, and are removed again if the
- * move then fails.
+ * move then fails (only the
+ * directories this call created, and only if still empty).
  * @returns `from` and `to` as given; the source no longer exists.
  * @throws {@link WorkspaceError} in each case listed above, and for any other failure of the move,
  * naming the path and the error code.
@@ -107,11 +151,21 @@ export async function migrateAppState(
     );
   }
 
-  let created: string | undefined;
+  // Before any `mkdir`: creating the destination's parents inside the source would touch it.
+  const lexicalFrom = from.replace(/[\\/]+$/, '');
+  const lexicalTo = to.replace(/[\\/]+$/, '');
+  if (lexicalTo === lexicalFrom || lexicalTo.startsWith(lexicalFrom + sep)) {
+    throw new WorkspaceError(
+      `Refusing to migrate ${from} into ${to}: the destination is the source or inside it. ` +
+        'Nothing was changed.',
+    );
+  }
+
+  const toCreate = await missingParentsOf(to);
   try {
-    // The first directory `mkdir` actually created: removing it removes everything it created.
-    created = await mkdir(dirname(to), { recursive: true });
+    await mkdir(dirname(to), { recursive: true });
   } catch (error) {
+    await removeEmpty(toCreate);
     throw new WorkspaceError(
       `Creating the parent of ${to} failed (${codeOf(error)}): ${messageOf(error)}. ` +
         'The source was not touched.',
@@ -121,22 +175,21 @@ export async function migrateAppState(
   try {
     await rename(from, to);
   } catch (error) {
+    const left = await removeEmpty(toCreate);
     const undone =
-      created === undefined
+      toCreate.length === 0
         ? 'nothing was created'
-        : await rm(created, { recursive: true, force: true }).then(
-            () => `${created}, which this call created, was removed`,
-            (failure: unknown) =>
-              `${created}, which this call created, could not be removed ` +
-              `(${messageOf(failure)}); remove it before retrying`,
-          );
+        : left.length === 0
+          ? `${toCreate[0]}, which this call created, was removed`
+          : `${left.join(', ')} could not be removed (another process may be using ` +
+            'them, or they are not empty); remove them before retrying if they are not wanted';
     const why =
       codeOf(error) === 'EXDEV'
         ? `${from} and ${to} are on different filesystems, which a rename cannot cross`
         : codeOf(error) === 'ENOTEMPTY' || codeOf(error) === 'EEXIST'
           ? `${to} already holds files (merging two stores yields one that opens and is wrong)`
           : codeOf(error) === 'EINVAL'
-            ? `${to} is inside ${from}`
+            ? `${to} cannot be moved there (EINVAL): it is inside ${from}, or the move is otherwise invalid`
             : codeOf(error) === 'ENOTDIR' || codeOf(error) === 'EISDIR'
               ? `${to} exists and is not a directory (a file or a symbolic link is never replaced)`
               : `the move failed (${codeOf(error)}): ${messageOf(error)}`;

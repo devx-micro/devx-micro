@@ -68,7 +68,9 @@ tool that finds a project must find **its own**.
 
 `directory` must be one plain path segment, or `projectMarker` throws a `TypeError`: not empty, not
 `.` or `..`, with no `/`, `\` or NUL byte, and no whitespace at either end (so a whitespace-only
-name is refused too).
+name is refused too). Invisible characters inside or at the edge that are not whitespace to
+`trim()` (such as U+200B) and embedded newlines are **not** checked: a name cannot leave its
+namespace, but it can be hard to read in a log.
 
 ## Behaviour
 
@@ -115,15 +117,19 @@ different failure modes.
 
 It refuses, leaving both sides as they were, when:
 
-- a path is not a non-empty absolute path;
+- a path is not a non-empty absolute path, or contains a `..` segment (the operating system and a
+  textual reading of it disagree when a component is missing or a link);
 - `from` does not exist, is not a directory, or is itself a symbolic link;
-- `from` and `to` are the same directory, under any spelling or through a link;
-- `to` is inside `from`;
+- `from` and `to` are the same directory, under any spelling that differs only in slashes, or
+  through a link;
+- `to` is the source or inside it;
 - `to` already holds files (merging two stores yields one that opens and is wrong), or exists and
   is a file or a link (neither is ever replaced);
 - `to` is on another filesystem.
 
-Missing parents of `to` are created, and removed again if the move then fails. Every refusal throws
+An existing **empty** directory at `to` is replaced on POSIX (Windows refuses it). Missing parents of
+`to` are created, and if the move then fails, only the ones this call created, and only while still
+empty, are removed (`rmdir`, never a recursive delete, so another process's data is never touched). Every refusal throws
 `WorkspaceError`, and its message says which case it was.
 
 `WorkspaceError` carries a `code` (`no-workspace` or `invalid-project-name`) so a transport can

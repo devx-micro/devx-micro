@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   readlinkSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -32,6 +33,7 @@ beforeEach(() => {
 afterEach(() => {
   process.chdir(cwd);
   chmodSync(base, 0o755);
+  if (existsSync(join(base, 'ro'))) chmodSync(join(base, 'ro'), 0o755);
   rmSync(base, { recursive: true, force: true });
 });
 
@@ -116,6 +118,24 @@ describe('migrating app state', () => {
 });
 
 describe('what is refused, with nothing changed', () => {
+  it('a ".." segment in either path, which would defeat the same-directory check', async () => {
+    const from = join(base, 'src');
+    seedStore(from);
+
+    // Nothing at `nx` exists, so a textual reading and the kernel's disagree.
+    expect(await refusal(from, `${base}/nx/../src`)).toMatch(/"\.\." segment/);
+    expect(await refusal(from, `${from}/n/../m/k`)).toMatch(/"\.\." segment/);
+    expect(await refusal(`${base}/x/../src`, join(base, 'new'))).toMatch(
+      /"\.\." segment/,
+    );
+
+    expect(existsSync(join(base, 'nx'))).toBe(false);
+    expect(existsSync(join(from, 'm'))).toBe(false);
+    expect(readFileSync(join(from, 'CURRENT'), 'utf8')).toBe(
+      'MANIFEST-000001\n',
+    );
+  });
+
   it.each([
     ['empty', ''],
     ['the current directory', '.'],
@@ -172,9 +192,6 @@ describe('what is refused, with nothing changed', () => {
     // A link is never replaced, so a link to the source is refused by the kernel, not renamed over.
     expect(await refusal(from, join(base, 'alias'))).toMatch(/not a directory/);
     expect(lstatSync(join(base, 'alias')).isSymbolicLink()).toBe(true);
-    expect(await refusal(from, join(base, 'x', '..', 'old'))).toMatch(
-      /same directory/,
-    );
     expect(existsSync(join(from, 'CURRENT'))).toBe(true);
   });
 
@@ -182,9 +199,13 @@ describe('what is refused, with nothing changed', () => {
     const from = join(base, 'old');
     seedStore(from);
 
+    const before = statSync(from).mtimeMs;
     expect(await refusal(from, join(from, 'sub', 'new'))).toMatch(
-      /inside|already holds/,
+      /the source or inside it/,
     );
+    expect(await refusal(from, `${from}/`)).toMatch(/same directory/);
+    // Refused before any mkdir, so the source is not even touched.
+    expect(statSync(from).mtimeMs).toBe(before);
 
     expect(existsSync(join(from, 'sub'))).toBe(false);
     expect(readFileSync(join(from, 'CURRENT'), 'utf8')).toBe(
@@ -224,7 +245,9 @@ describe('what is refused, with nothing changed', () => {
     mkdirSync(join(base, 'a', 'b', 'new'), { recursive: true });
     writeFileSync(join(base, 'a', 'b', 'new', 'theirs'), 'x');
     // `a/b` existed already, so nothing may be removed.
-    expect(await refusal(from, to)).toMatch(/nothing was created/);
+    expect(await refusal(from, to)).toMatch(
+      /already holds files.*nothing was created/,
+    );
     expect(existsSync(join(base, 'a', 'b', 'new', 'theirs'))).toBe(true);
 
     rmSync(join(base, 'a'), { recursive: true });
@@ -233,7 +256,7 @@ describe('what is refused, with nothing changed', () => {
     writeFileSync(join(base, 'c', 'file'), 'x');
     // A parent that is a file: creation fails, the source is untouched.
     expect(await refusal(from, join(base, 'c', 'file', 'new'))).toMatch(
-      /parent|failed/,
+      /Creating the parent of .* failed/,
     );
     expect(existsSync(deep)).toBe(false);
     expect(existsSync(join(from, 'CURRENT'))).toBe(true);
@@ -256,4 +279,66 @@ describe('what is refused, with nothing changed', () => {
       rmSync(target, { recursive: true, force: true });
     }
   });
+});
+
+describe('cleanup after a failed move', () => {
+  // A source in a read-only parent cannot be renamed away (EACCES), which fails the move after the
+  // destination's parents were created. Root ignores directory permissions, so skip there.
+  const asRoot = process.getuid?.() === 0;
+
+  it.skipIf(asRoot)(
+    'never removes what a concurrent migration put into the parents it created',
+    async () => {
+      const locked = join(base, 'ro');
+      mkdirSync(join(locked, 'src'), { recursive: true });
+      chmodSync(locked, 0o555);
+      const ok = join(base, 'b');
+      seedStore(ok);
+      const parent = join(base, 'new');
+
+      for (let round = 0; round < 40; round++) {
+        rmSync(parent, { recursive: true, force: true });
+        const [failed, moved] = await Promise.allSettled([
+          migrateAppState(join(locked, 'src'), join(parent, 'a')),
+          (async () => {
+            const target = join(parent, 'b');
+            const result = await migrateAppState(ok, target);
+            return result.to;
+          })(),
+        ]);
+        expect(failed.status).toBe('rejected');
+        if (moved.status === 'fulfilled') {
+          // B's data must survive A's cleanup, whatever the interleaving.
+          expect(readFileSync(join(parent, 'b', 'CURRENT'), 'utf8')).toBe(
+            'MANIFEST-000001\n',
+          );
+          // Put it back for the next round.
+          rmSync(ok, { recursive: true, force: true });
+          renameSync(join(parent, 'b'), ok);
+        } else {
+          // B lost a race to A's cleanup of the shared parent: it must fail whole, not half-move.
+          expect(existsSync(join(ok, 'CURRENT'))).toBe(true);
+        }
+      }
+    },
+  );
+
+  it.skipIf(asRoot)(
+    'removes exactly the parents it created, and says so',
+    async () => {
+      const locked = join(base, 'ro');
+      mkdirSync(join(locked, 'src'), { recursive: true });
+      chmodSync(locked, 0o555);
+      mkdirSync(join(base, 'kept'));
+
+      const message = await refusal(
+        join(locked, 'src'),
+        join(base, 'kept', 'x', 'y', 'new'),
+      );
+
+      expect(message).toMatch(/was removed/);
+      expect(existsSync(join(base, 'kept'))).toBe(true);
+      expect(existsSync(join(base, 'kept', 'x'))).toBe(false);
+    },
+  );
 });
