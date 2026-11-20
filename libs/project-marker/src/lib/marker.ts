@@ -232,11 +232,29 @@ export async function writeMarkerIn(
   }
 
   const marker: WorkspaceMarker = { version: MARKER_VERSION, project };
-  await mkdir(markerDirectoryIn(directory, root), { recursive: true });
-  await writeFile(
-    markerPathIn(directory, root),
-    `${JSON.stringify(marker, null, 2)}\n`,
-    'utf8',
-  );
+  const path = markerPathIn(directory, root);
+  try {
+    await mkdir(markerDirectoryIn(directory, root), { recursive: true });
+    // 🔴 `wx`: create, never overwrite. Two initialisations racing past the read above must not
+    // both report `created` while the second replaces the first.
+    await writeFile(path, `${JSON.stringify(marker, null, 2)}\n`, {
+      encoding: 'utf8',
+      flag: 'wx',
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      // Another call created it first: report what is there, as the idempotent path does. A damaged
+      // or unreadable result is refused by `readMarkerIn`, not repaired.
+      const winner = await readMarkerIn(directory, root);
+      if (winner) return { workspace: winner, created: false };
+    }
+    // A non-WorkspaceError here would break "one `instanceof` covers every unusable-project case",
+    // for example when a FILE has the marker directory's name and `mkdir` cannot create it.
+    throw new WorkspaceError(
+      `Cannot write the project marker at ${path} ` +
+        `(${(error as NodeJS.ErrnoException).code ?? 'unknown error'}): ` +
+        `${error instanceof Error ? error.message : String(error)}.`,
+    );
+  }
   return { workspace: { root, marker }, created: true };
 }

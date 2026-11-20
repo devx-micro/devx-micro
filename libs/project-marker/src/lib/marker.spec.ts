@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -132,6 +138,37 @@ describe('writing the marker', () => {
   it('refuses to write over a damaged marker rather than repairing it silently', async () => {
     putMarker('{ not json');
     await expect(writeMarker(root)).rejects.toThrow(WorkspaceError);
+  });
+
+  it('reports a file named like the marker directory as a WorkspaceError, and leaves it alone', async () => {
+    writeFileSync(join(root, DIRECTORY), 'an unrelated config file');
+
+    const failure = await writeMarker(root, 'demo').catch((error) => error);
+
+    expect(failure).toBeInstanceOf(WorkspaceError);
+    expect(failure.message).toContain(join(root, DIRECTORY));
+    expect(readFileSync(join(root, DIRECTORY), 'utf8')).toBe(
+      'an unrelated config file',
+    );
+  });
+
+  it('never rewrites a marker when two initialisations race: one creates, the rest report it', async () => {
+    const names = Array.from({ length: 20 }, (_, index) => `racer-${index}`);
+
+    const results = await Promise.all(
+      names.map((name) => writeMarker(root, name)),
+    );
+
+    const creators = results.filter((result) => result.created);
+    expect(creators).toHaveLength(1);
+    const winner = creators[0].workspace.marker.project;
+    // Every caller reports the same project, and it is what is on disk.
+    for (const result of results) {
+      expect(result.workspace.marker.project).toBe(winner);
+    }
+    expect(JSON.parse(readFileSync(markerPathOf(root), 'utf8')).project).toBe(
+      winner,
+    );
   });
 
   /**

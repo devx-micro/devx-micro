@@ -103,7 +103,9 @@ async function removeEmpty(created: readonly string[]): Promise<string[]> {
  * the source untouched; copy it yourself, verify the copy, and remove the source. That is a
  * different operation with different failure modes, and is not folded in here.
  *
- * Refused, with nothing changed on either side:
+ * Refused, with the source's contents and the destination unchanged (a destination reached
+ * through a symbolic link into the source can make `mkdir` add a directory inside the source for an
+ * instant, which is removed again, so its modification time may change):
  * - a path that is not a non-empty absolute path, or that contains a `..` segment;
  * - a source that does not exist, is not a directory, or is itself a symbolic link;
  * - the same directory given twice (even under different spellings or through a link);
