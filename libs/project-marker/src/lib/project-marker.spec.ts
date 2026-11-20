@@ -124,6 +124,14 @@ describe('the directory name is required and must be one plain segment', () => {
     ['a path with a slash', 'a/b'],
     ['a path with a backslash', 'a\\b'],
     ['not a string', 42],
+    // A NUL byte binds, then fails every lookup as a "damaged project": a programming error
+    // reported far from its cause, and as the wrong kind of error.
+    ['a NUL byte', '\0'],
+    ['a name containing a NUL byte', 'a\0b'],
+    ['whitespace only', ' '],
+    ['a tab only', '\t'],
+    ['trailing whitespace', '.acme '],
+    ['leading whitespace', ' .acme'],
   ])('refuses %s', (_label, directory) => {
     expect(() =>
       projectMarker({ directory } as unknown as ProjectMarkerOptions),
@@ -135,6 +143,43 @@ describe('the directory name is required and must be one plain segment', () => {
       TypeError,
     );
   });
+
+  it('accepts an ordinary dot-directory name', () => {
+    expect(projectMarker({ directory: '.acme-tool_2' }).directory).toBe(
+      '.acme-tool_2',
+    );
+  });
+});
+
+/**
+ * 🔴 An app name is the namespace that keeps two apps' state apart. A name that escapes the marker
+ * directory, names the marker directory itself, or names the marker file would let an app (or a
+ * migration into its path) act on something that is not its own state.
+ */
+describe('the app name in appStatePathOf is one plain segment', () => {
+  it.each([
+    ['empty', ''],
+    ['the current directory', '.'],
+    ['the parent directory', '..'],
+    ['an escape upward', '../../etc'],
+    ['a path with a slash', 'a/b'],
+    ['a path with a backslash', 'a\\b'],
+    ['a NUL byte', 'a\0b'],
+    ['the marker file name', MARKER_FILENAME],
+    ['not a string', 7],
+    ['missing', undefined],
+  ])('refuses %s', (_label, app) => {
+    expect(() => alpha.appStatePathOf(base, app as unknown as string)).toThrow(
+      TypeError,
+    );
+  });
+
+  it.each(['store', 'shared-kernel', '.cache', 'v2.index'])(
+    'accepts %j',
+    (app) => {
+      expect(alpha.appStatePathOf(base, app)).toBe(join(base, '.alpha', app));
+    },
+  );
 });
 
 describe('the hint', () => {

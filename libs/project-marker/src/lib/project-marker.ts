@@ -8,6 +8,7 @@ import {
   markerDirectoryIn,
   markerPathIn,
   readMarkerIn,
+  segmentProblem,
   writeMarkerIn,
   type Workspace,
 } from './marker';
@@ -18,7 +19,8 @@ export interface ProjectMarkerOptions {
    * The name of the marker directory at a project root, such as `.acme`. **Required, with no
    * default**: two tools that defaulted to the same name would each accept the other's projects.
    *
-   * It must be one plain path segment: not empty, not `.` or `..`, and without `/` or `\`.
+   * It must be one plain path segment: not empty, not `.` or `..`, with no `/`, `\` or NUL byte, and
+   * with no whitespace at either end (so a whitespace-only name is refused too).
    */
   readonly directory: string;
   /**
@@ -48,13 +50,18 @@ export interface ProjectMarker {
    *
    * The app name is the namespace, so two apps sharing a project cannot collide. Nothing is
    * created; this only computes the path.
+   *
+   * @throws TypeError when `app` is not one plain path segment (empty, `.`, `..`, or holding
+   * `/`, `\\` or a NUL byte), or is the marker file's name, {@link MARKER_FILENAME}. Each of those
+   * would put an app's state outside its own directory, or on the marker itself.
    */
   appStatePathOf(root: string, app: string): string;
   /**
    * Read the marker at `root`.
    *
    * @returns The project, or `undefined` only when `root` has no marker file at all: the "keep
-   * looking" case.
+   * looking" case. That includes a FILE with the marker directory's name (an unrelated config file,
+   * or a `.git` file in a worktree), since nothing can be beneath it.
    * @throws {@link WorkspaceError} when a marker file exists but cannot be read, is not valid JSON,
    * lacks `version` or `project`, or has a version other than {@link MARKER_VERSION}. A damaged
    * marker is never treated as absent, because a search that skipped it would act on the parent
@@ -67,8 +74,8 @@ export interface ProjectMarker {
    * and initialising again must not quietly undo that.
    *
    * @param project - The project name; defaults to the base name of `root`.
-   * @throws {@link WorkspaceError} with code `invalid-project-name` when `project` is not one segment
-   * free of whitespace and colons; with code `no-workspace` when a damaged marker is already there,
+   * @throws {@link WorkspaceError} with code `invalid-project-name` when `project` is empty or
+   * contains whitespace or a colon (nothing else is checked: `a/b` and `.` pass); with code `no-workspace` when a damaged marker is already there,
    * which is refused rather than repaired.
    */
   writeMarker(
@@ -99,18 +106,17 @@ export interface ProjectMarker {
 
 const assertDirectoryName = (directory: unknown): string => {
   if (
-    typeof directory !== 'string' ||
-    directory === '' ||
-    directory === '.' ||
-    directory === '..' ||
-    /[/\\]/.test(directory)
+    segmentProblem(directory) !== undefined ||
+    // Whitespace at either end is invisible in every message that names the directory, and a
+    // whitespace-only name is not a name.
+    (directory as string).trim() !== directory
   ) {
     throw new TypeError(
       `projectMarker: "directory" must be one plain path segment, such as ".acme"; got ` +
         `${JSON.stringify(directory) ?? String(directory)}.`,
     );
   }
-  return directory;
+  return directory as string;
 };
 
 /**
@@ -128,7 +134,8 @@ const assertDirectoryName = (directory: unknown): string => {
  * A factory rather than a `directory` argument on every function: the name is a property of the
  * tool, not of each call, so it is stated once, and a call site cannot pass the wrong one.
  *
- * @throws TypeError when `options.directory` is missing or is not one plain path segment.
+ * @throws TypeError when `options.directory` is missing or is not one plain path segment (see
+ * {@link ProjectMarkerOptions.directory}).
  */
 export function projectMarker(options: ProjectMarkerOptions): ProjectMarker {
   const directory = assertDirectoryName(

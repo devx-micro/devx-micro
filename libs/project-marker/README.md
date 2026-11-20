@@ -10,7 +10,7 @@ that marker, and moves existing state there safely.
 npm install @devx-micro/project-marker
 ```
 
-No runtime dependencies beyond Node's `fs` and `path`.
+It has no dependencies: it uses only Node's built-in `fs` and `path`.
 
 ## Why a marker
 
@@ -66,20 +66,21 @@ re-exported, and existing code that calls `findWorkspace(...)` keeps calling `fi
 There is no default, because two tools that shared one would each accept the other's projects. A
 tool that finds a project must find **its own**.
 
-`directory` must be one plain path segment (not empty, not `.` or `..`, no `/` or `\`), or
-`projectMarker` throws a `TypeError`.
+`directory` must be one plain path segment, or `projectMarker` throws a `TypeError`: not empty, not
+`.` or `..`, with no `/`, `\` or NUL byte, and no whitespace at either end (so a whitespace-only
+name is refused too).
 
 ## Behaviour
 
-| Function                                        | What it does                                                                                                                                                                                                                      |
-| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `findWorkspace(from?)`                          | Walks up from `from` (default: the current directory) to the nearest marker. Throws `WorkspaceError` if there is none, naming the marker it looked for and ending with your `hint`. Never falls back to the cwd; creates nothing. |
-| `resolveWorkspace({ from, override })`          | An explicit `override` root if given (trusted, even if unmarked), otherwise `findWorkspace(from)`. An empty override counts as absent.                                                                                            |
-| `readMarker(root)`                              | The project at `root`, or `undefined` only when there is no marker file at all.                                                                                                                                                   |
-| `writeMarker(root, project?)`                   | Creates the marker; the project name defaults to the base name of `root`. Idempotent: an existing valid marker is returned unchanged with `created: false`.                                                                       |
-| `appStatePathOf(root, app)`                     | `<root>/<directory>/<app>`. Computes the path only.                                                                                                                                                                               |
-| `markerDirectoryOf(root)`, `markerPathOf(root)` | The marker directory and file at `root`.                                                                                                                                                                                          |
-| `migrateAppState(from, to)`                     | Moves a state directory: copy, verify, then remove. Not bound to a directory name.                                                                                                                                                |
+| Function                                        | What it does                                                                                                                                                                                                                                                                 |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `findWorkspace(from?)`                          | Walks up from `from` (default: the current directory) to the nearest marker. Throws `WorkspaceError` if there is none, naming the marker it looked for and ending with your `hint`. Never falls back to the cwd; creates nothing.                                            |
+| `resolveWorkspace({ from, override })`          | An explicit `override` root if given (trusted, even if unmarked), otherwise `findWorkspace(from)`. An empty override counts as absent.                                                                                                                                       |
+| `readMarker(root)`                              | The project at `root`, or `undefined` only when there is no marker file at all. A **file** with the marker directory's name (an unrelated config file, a `.git` file in a worktree) holds no marker, so it reads as absent and the walk continues past it.                   |
+| `writeMarker(root, project?)`                   | Creates the marker; the project name defaults to the base name of `root`. Idempotent: an existing valid marker is returned unchanged with `created: false`.                                                                                                                  |
+| `appStatePathOf(root, app)`                     | `<root>/<directory>/<app>`. Computes the path only. Throws `TypeError` unless `app` is one plain path segment (not empty, `.` or `..`, with no `/`, `\` or NUL byte) other than `project.json`, so an app's state can never land outside its own directory or on the marker. |
+| `markerDirectoryOf(root)`, `markerPathOf(root)` | The marker directory and file at `root`.                                                                                                                                                                                                                                     |
+| `migrateAppState(from, to)`                     | Moves a state directory: copy, verify, then remove. Not bound to a directory name.                                                                                                                                                                                           |
 
 ### Failures are loud, on purpose
 
@@ -90,13 +91,40 @@ tool that finds a project must find **its own**.
   `MARKER_VERSION` (1) only.
 - **A marker is never rewritten.** `writeMarker` leaves an existing marker alone even if you pass a
   different name, since a person may have edited it; a damaged one is refused, not repaired.
-- **A project name is one segment** with no whitespace and no colon, so it can namespace identifiers.
-  Anything else throws `WorkspaceError` with code `invalid-project-name`.
-- **`migrateAppState` copies, verifies, and only then removes.** It compares the file list and the
-  bytes of every file, because embedded stores keep lock, log and manifest files beside their data,
-  and a copy missing any of them is corrupt rather than partial. It refuses a destination that
-  already holds files, since merging two stores yields one that opens and is wrong. On any failure
-  the source is left untouched.
+- **A project name is checked when a marker is written**: it must be non-empty, with no whitespace
+  and no colon, so it can namespace identifiers. That is the whole rule (`a/b` and `.` pass).
+  Anything else throws `WorkspaceError` with code `invalid-project-name`. **Reading does not
+  check it**: a marker someone edited by hand still opens, so check the name yourself if you build
+  identifiers from it.
+
+### Migrating state
+
+`migrateAppState(from, to)` **copies, verifies, and only then removes.** It compares the file list
+and the bytes of every file, because embedded stores keep lock, log and manifest files beside their
+data, and a copy missing any of them is corrupt rather than partial.
+
+It refuses, **before changing anything on either side**, when:
+
+- `from` does not exist, is not a directory, or is itself a symbolic link;
+- `from` holds a **symbolic link** anywhere, or any other special file (pipe, socket, device). A link
+  cannot be verified by reading through it, and a copied link can dangle once the source is
+  removed, so links are refused rather than copied. Replace them with what they point to, or remove
+  them, and migrate again;
+- `to` exists and is not a directory, or already holds files (merging two stores yields one that
+  opens and is wrong);
+- `from` and `to` overlap: one inside the other, or the same directory, compared after resolving
+  symbolic links.
+
+If the copy or its verification fails, the **source is untouched**, and:
+
+- a destination this call **created is removed**, so you can simply run it again;
+- a destination that **already existed** (empty) is **left as it is**, and may hold a partial copy;
+  empty it before retrying.
+
+If only removing the source fails, the copy at `to` is complete and verified, and the source may be
+partly removed; the error says so, and the rest must be removed by hand.
+
+Every one of these failures throws `WorkspaceError`, and its message says which case it was.
 
 `WorkspaceError` carries a `code` (`no-workspace` or `invalid-project-name`) so a transport can
 report it as itself rather than as a generic failure. Your own code may throw it too, for its own

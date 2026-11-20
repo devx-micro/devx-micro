@@ -35,8 +35,11 @@ export interface WorkspaceMarker {
   /** The marker format; always {@link MARKER_VERSION} for a marker this package accepts. */
   readonly version: number;
   /**
-   * The project's name: one segment, with no whitespace and no colon. Free text a person may edit;
-   * see {@link ProjectMarker.writeMarker} for why it is never rewritten.
+   * The project's name. When a marker is **written**, the name is checked to be non-empty, with no
+   * whitespace and no colon; nothing else is checked, so `a/b` or `.` pass. When a marker is
+   * **read**, the name is not checked at all: it is free text a person may have edited, and a marker
+   * must still open after such an edit. A consumer that builds identifiers from it should check it
+   * there. See {@link ProjectMarker.writeMarker} for why it is never rewritten.
    */
   readonly project: string;
 }
@@ -54,7 +57,8 @@ export interface Workspace {
  *
  * - `no-workspace`: there is no usable project here (absent, unreadable, damaged, unknown version),
  *   or state could not be migrated.
- * - `invalid-project-name`: a marker was refused because its project name is not one plain segment.
+ * - `invalid-project-name`: a marker was not written because its project name is empty or contains
+ *   whitespace or a colon. Only writing checks this; reading never raises it.
  */
 export type WorkspaceErrorCode = 'no-workspace' | 'invalid-project-name';
 
@@ -96,21 +100,53 @@ export const markerPathIn = (directory: string, root: string): string =>
   join(root, directory, MARKER_FILENAME);
 
 /**
+ * @internal Why `name` is not one plain path segment, or `undefined` if it is.
+ *
+ * Plain means: a non-empty string that is not `.` or `..` and holds no `/`, `\\` or NUL byte.
+ * Node refuses a path with a NUL byte only when the path is used, which would surface a programming
+ * error far from its cause, as the wrong kind of error.
+ */
+export const segmentProblem = (name: unknown): string | undefined => {
+  if (typeof name !== 'string') return 'it is not a string';
+  if (name === '') return 'it is empty';
+  if (name === '.' || name === '..') return 'it names a relative directory';
+  if (/[/\\\0]/.test(name)) return 'it contains a path separator or a NUL byte';
+  return undefined;
+};
+
+/**
  * @internal One app's state directory, beneath the marker.
  *
- * The app name is the namespace, so two apps sharing a project cannot collide.
+ * 🔴 The app name is the namespace that keeps two apps' state apart, so it must be one plain
+ * segment, and not the marker file's own name. Without the check, `..` escapes the marker, `''`
+ * names the marker directory itself and `project.json` names the marker file, and a migration into
+ * any of those paths would act on something that is not the app's state.
  */
 export const appStatePathIn = (
   directory: string,
   root: string,
   app: string,
-): string => join(root, directory, app);
+): string => {
+  const problem =
+    segmentProblem(app) ??
+    (app === MARKER_FILENAME ? 'it is the marker file name' : undefined);
+  if (problem) {
+    throw new TypeError(
+      `appStatePathOf: the app name must be one plain path segment other than ` +
+        `"${MARKER_FILENAME}", but ${problem}: ${JSON.stringify(app) ?? String(app)}.`,
+    );
+  }
+  return join(root, directory, app);
+};
 
 /**
  * @internal Read the marker at `root`, or explain why it is not a project.
  *
  * Returns `undefined` only when there is no marker file at all: the ordinary "keep walking" case
- * for a caller searching upward. Everything else **throws**. A directory with a marker file that is
+ * for a caller searching upward. That covers nothing at `<directory>/project.json`, and also
+ * `<directory>` (or `root`) being a file rather than a directory: an unrelated file of the same
+ * name, such as an older tool's config file or a `.git` file in a worktree, holds no marker and
+ * must not stop the walk. Everything else **throws**. A directory with a marker file that is
  * unreadable, malformed or of an unknown version is a damaged project, not a candidate to skip.
  * Walking past it would take the search to a parent and silently act on the wrong project.
  */
@@ -123,7 +159,11 @@ export async function readMarkerIn(
   try {
     raw = await readFile(path, 'utf8');
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    // ENOTDIR: a path component is a file, so no marker can be beneath it. EISDIR is NOT here: it
+    // means something occupies the marker file's own name inside a marker directory, which is a
+    // damaged marker, not an absent one.
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return undefined;
     throw new WorkspaceError(
       `Cannot read the project marker at ${path}: ${(error as Error).message}`,
     );
@@ -175,12 +215,13 @@ export async function writeMarkerIn(
 ): Promise<{ workspace: Workspace; created: boolean }> {
   const existing = await readMarkerIn(directory, root);
   if (existing) return { workspace: existing, created: false };
-  // 🔴 A project name is a namespace for whatever a consumer keys by it: one segment, no
-  // whitespace, no colon. Without this check a directory named `My Docs` is marked as `My Docs`,
-  // and every identifier later built from that name is refused downstream, far from the cause.
+  // 🔴 A project name is a namespace for whatever a consumer keys by it: non-empty, no
+  // whitespace, no colon. That is the whole rule: `a/b` and `.` pass, and consumers depend on that.
+  // Without this check a directory named `My Docs` is marked as `My Docs`, and every identifier
+  // later built from that name is refused downstream, far from the cause.
   if (!/^[^\s:]+$/.test(project)) {
     throw new WorkspaceError(
-      `'${project}' cannot name a project: a project name is one segment with no whitespace and no ` +
+      `'${project}' cannot name a project: a project name must be non-empty, with no whitespace and no ` +
         'colon, because it namespaces identifiers built from it. Rename the directory and ' +
         'initialise again.',
       'invalid-project-name',

@@ -59,6 +59,18 @@ describe('walking up to the marker', () => {
     expect(found.marker.project).toBe('inner');
   });
 
+  it('walks past a FILE that has the marker directory’s name, to the project above', async () => {
+    mark(root, 'the-real-project');
+    const sub = join(root, 'sub');
+    mkdirSync(join(sub, 'deep'), { recursive: true });
+    writeFileSync(join(sub, DIRECTORY), 'an unrelated config file\n');
+    const found = await findWorkspace(join(sub, 'deep'));
+    expect(found).toMatchObject({
+      root,
+      marker: { project: 'the-real-project' },
+    });
+  });
+
   it('starts from the current directory when no start is given', async () => {
     mark(root, 'from-cwd');
     const deep = join(root, 'a');

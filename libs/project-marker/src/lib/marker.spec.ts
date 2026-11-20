@@ -36,6 +36,23 @@ describe('a directory with no marker', () => {
     mkdirSync(join(root, DIRECTORY), { recursive: true });
     await expect(readMarker(root)).resolves.toBeUndefined();
   });
+
+  /**
+   * 🔴 A plain FILE with the marker directory's name holds no marker: there is nothing at
+   * `<directory>/project.json`. It is common once the name is a parameter (an older tool's config
+   * file of the same name, or a `.git` file in a worktree), so it must read as absent, not as a
+   * damaged project that stops the walk.
+   */
+  it('is not a project when a file, not a directory, has the marker directory’s name', async () => {
+    writeFileSync(join(root, DIRECTORY), 'an unrelated config file\n');
+    await expect(readMarker(root)).resolves.toBeUndefined();
+  });
+
+  it('is not a project when the root itself is a file', async () => {
+    const file = join(root, 'a-file');
+    writeFileSync(file, '');
+    await expect(readMarker(file)).resolves.toBeUndefined();
+  });
 });
 
 /**
@@ -69,7 +86,8 @@ describe('a damaged marker is a hard failure, not a skip', () => {
   });
 
   it('rejects a marker it cannot read, rather than treating it as absent', async () => {
-    // A directory where the file should be: present, but not readable as a file.
+    // A directory where the marker FILE should be, inside a real marker directory: something
+    // occupies the marker's own name, so this is a damaged marker, not an absent one.
     mkdirSync(markerPathOf(root), { recursive: true });
     await expect(readMarker(root)).rejects.toThrow(WorkspaceError);
     await expect(readMarker(root)).rejects.toThrow(/Cannot read/);
@@ -117,7 +135,7 @@ describe('writing the marker', () => {
   });
 
   /**
-   * 🔴 A project name is a namespace for whatever the consumer keys by it, so it is one segment
+   * 🔴 A project name is a namespace for whatever the consumer keys by it, so it must be non-empty,
    * with no whitespace and no colon. A directory named `My Docs` would otherwise be marked as
    * `My Docs`, and every identifier built from it would then be refused downstream.
    */
@@ -128,6 +146,37 @@ describe('writing the marker', () => {
       expect(failure).toBeInstanceOf(WorkspaceError);
       expect((failure as WorkspaceError).code).toBe('invalid-project-name');
       await expect(readMarker(root)).resolves.toBeUndefined();
+    },
+  );
+
+  /**
+   * The rule is exactly "non-empty, no whitespace, no colon", and nothing more. Consumers already
+   * key identifiers by names this accepts, so tightening it would break them; this pins it.
+   */
+  it.each(['a/b', '.', '..', 'a.b-c_d'])(
+    'accepts %j as a project name: only whitespace and colons are refused',
+    async (name) => {
+      await expect(writeMarker(root, name)).resolves.toMatchObject({
+        created: true,
+        workspace: { marker: { project: name } },
+      });
+    },
+  );
+});
+
+/**
+ * 🔴 The project-name rule is checked when a marker is WRITTEN, never when one is read. A marker a
+ * person edited by hand must still open; refusing it on read would turn an edit into a lost project.
+ */
+describe('reading does not re-check the project name', () => {
+  it.each(['My Docs', ''])(
+    'reads a hand-edited name %j as it is',
+    async (name) => {
+      putMarker(JSON.stringify({ version: MARKER_VERSION, project: name }));
+      await expect(readMarker(root)).resolves.toEqual({
+        root,
+        marker: { version: MARKER_VERSION, project: name },
+      });
     },
   );
 });
