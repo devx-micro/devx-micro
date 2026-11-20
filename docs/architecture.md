@@ -1,7 +1,9 @@
 # Architecture
 
 This workspace holds seven small libraries that together give a NestJS CQRS application a uniform,
-observable, multi-transport tool surface.
+observable, multi-transport tool surface, and one standalone library, `project-marker`, that finds
+the project a tool is standing in. `project-marker` depends on no other package here, and none
+depends on it, so it is not in the diagram below.
 
 ```mermaid
 flowchart LR
@@ -17,7 +19,7 @@ flowchart LR
 ```
 
 A package may depend only on packages to its right (and on `@nestjs/*` and third-party packages).
-The four transports do not depend on each other. `app-main` is not a transport: it sits above `app-cli`, `app-repl` and `app-sidecar` and composes them into one process entry point (`defineApp`), so it depends on all three and on `app-runtime`. Nx tags all seven `scope:shared`, `type:util`.
+The four transports do not depend on each other. `app-main` is not a transport: it sits above `app-cli`, `app-repl` and `app-sidecar` and composes them into one process entry point (`defineApp`), so it depends on all three and on `app-runtime`. Nx tags all eight libraries `scope:shared`, `type:util`.
 
 ## Design rules
 

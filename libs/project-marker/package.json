@@ -1,0 +1,20 @@
+{
+  "name": "@devx-micro/project-marker",
+  "version": "0.3.0",
+  "type": "commonjs",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/devx-micro/devx-micro.git",
+    "directory": "libs/project-marker"
+  },
+  "bugs": {
+    "url": "https://github.com/devx-micro/devx-micro/issues"
+  },
+  "homepage": "https://github.com/devx-micro/devx-micro/tree/main/libs/project-marker#readme",
+  "publishConfig": {
+    "access": "public"
+  }
+}
