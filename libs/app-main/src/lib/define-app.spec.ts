@@ -70,15 +70,20 @@ function build(overrides: Partial<AppDefinition<Options>> = {}) {
 describe('defineApp', () => {
   let stderr: string;
   let logged: string[];
+  let warned: string[];
   beforeEach(() => {
     stderr = '';
     logged = [];
+    warned = [];
     vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
       stderr += String(chunk);
       return true;
     });
     vi.spyOn(Logger, 'log').mockImplementation((message: unknown) => {
       logged.push(String(message));
+    });
+    vi.spyOn(Logger, 'warn').mockImplementation((message: unknown) => {
+      warned.push(String(message));
     });
     process.exitCode = undefined;
     delete process.env['DEMO_APP_MAIN_PORT'];
@@ -96,7 +101,9 @@ describe('defineApp', () => {
       for (const flag of ['--repl', '--sidecar', '--cli', '--help'] as const) {
         expect(() =>
           build({ extraModes: [{ flag, run: async () => undefined }] }),
-        ).toThrow(`extra mode '${flag}' is already taken`);
+        ).toThrow(
+          `demo: extra mode '${flag}' is already taken (a standard flag, or another extra mode)`,
+        );
       }
     });
 
@@ -198,6 +205,27 @@ describe('defineApp', () => {
       await expect(app.runCli(['x'])).rejects.toThrow('real failure');
     });
 
+    it('logs a warning, with the app name and the cause, when closing fails while another error is being reported', async () => {
+      const { app, closed } = build();
+      closed.mockRejectedValue(new Error('dispose blew up'));
+      vi.mocked(runOneShot).mockRejectedValue(new Error('real failure'));
+
+      await expect(app.runCli(['x'])).rejects.toThrow('real failure');
+
+      expect(warned).toEqual([
+        'demo: closing the tool failed while handling an earlier error: dispose blew up',
+      ]);
+    });
+
+    it('does not warn when closing succeeds', async () => {
+      const { app } = build();
+      vi.mocked(runOneShot).mockRejectedValue(new Error('real failure'));
+
+      await expect(app.runCli(['x'])).rejects.toThrow('real failure');
+
+      expect(warned).toEqual([]);
+    });
+
     it('defaults argv to the process arguments', async () => {
       const { app } = build();
       const saved = process.argv;
@@ -232,8 +260,8 @@ describe('defineApp', () => {
       await app.runRepl(input, output, { tag: 'r' });
       await app.runSidecar(input, output, { tag: 's' });
 
-      const repl = vi.mocked(runInteractiveRepl).mock.calls[0]!;
-      const sidecar = vi.mocked(runJsonLinesDriver).mock.calls[0]!;
+      const repl = vi.mocked(runInteractiveRepl).mock.calls[0] as unknown[];
+      const sidecar = vi.mocked(runJsonLinesDriver).mock.calls[0] as unknown[];
       expect(repl[0]).toBe(runtime);
       expect(repl[1]).toBe(input);
       expect(repl[2]).toBe(output);
@@ -250,8 +278,8 @@ describe('defineApp', () => {
       await app.runSidecar();
 
       for (const call of [
-        vi.mocked(runInteractiveRepl).mock.calls[0]!,
-        vi.mocked(runJsonLinesDriver).mock.calls[0]!,
+        vi.mocked(runInteractiveRepl).mock.calls[0] as unknown[],
+        vi.mocked(runJsonLinesDriver).mock.calls[0] as unknown[],
       ]) {
         expect(call[1]).toBe(process.stdin);
         expect(call[2]).toBe(process.stdout);
@@ -470,6 +498,41 @@ describe('defineApp', () => {
       await expect(app.runApi()).rejects.toThrow('EADDRINUSE');
     });
 
+    it.each([
+      ['/api', '/api/demo/help'],
+      ['api/', '/api/demo/help'],
+      ['/', '/demo/help'],
+      ['/v1/', '/v1/demo/help'],
+      ['v1/beta', '/v1/beta/demo/help'],
+    ])('logs a clean help path for the prefix %j', async (prefix, helpPath) => {
+      const { app, http } = build({
+        http: {
+          createApp: async () => http.app as never,
+          portEnv: 'DEMO_APP_MAIN_PORT',
+          defaultPort: 3999,
+          globalPrefix: prefix,
+        },
+      });
+
+      await app.runApi();
+
+      expect(logged).toEqual([
+        `demo is serving on: http://localhost:4321${helpPath}`,
+      ]);
+    });
+
+    it('logs a warning, and still reports the startup error, when closing the application fails too', async () => {
+      const { app, http } = build();
+      http.app.listen.mockRejectedValue(new Error('onModuleInit boom'));
+      http.app.close.mockRejectedValue(new Error('onModuleInit boom'));
+
+      await expect(app.runApi()).rejects.toThrow('onModuleInit boom');
+
+      expect(warned).toEqual([
+        'demo: closing the application failed while handling an earlier error: onModuleInit boom',
+      ]);
+    });
+
     it('resolves to the application it started', async () => {
       const { app, http } = build();
       expect(await app.runApi()).toBe(http.app);
@@ -598,6 +661,33 @@ describe('defineApp', () => {
 
       expect(runJsonLinesDriver).toHaveBeenCalledTimes(1);
       expect(run).toHaveBeenCalledTimes(1);
+    });
+
+    it('checks only the first argument: a later unrecognised flag is not refused and reaches the operation parser', async () => {
+      const { app } = build();
+
+      await app.main(['note.get', '--nope']);
+
+      expect(stderr).toBe('');
+      expect(process.exitCode).toBe(0);
+      expect(runOneShot).toHaveBeenCalledWith(runtime, ['note.get', '--nope']);
+    });
+
+    it('defaults argv to the process arguments', async () => {
+      const { app } = build();
+      const saved = process.argv;
+      process.argv = ['node', 'main', 'note.get', '--id', '4'];
+      try {
+        await app.main();
+      } finally {
+        process.argv = saved;
+      }
+
+      expect(runOneShot).toHaveBeenCalledWith(runtime, [
+        'note.get',
+        '--id',
+        '4',
+      ]);
     });
 
     it('prefers the REPL when both --repl and --sidecar are given', async () => {
@@ -773,11 +863,14 @@ describe('defineApp', () => {
 
       it('prints any other one-shot failure with the app name and its stack', async () => {
         const { app } = build();
-        vi.mocked(runOneShot).mockRejectedValue(new Error('exploded'));
+        const failure = new Error('exploded');
+        failure.stack = 'Error: exploded\n    at fake (file.ts:1:1)';
+        vi.mocked(runOneShot).mockRejectedValue(failure);
 
         await app.main(['x']);
 
         expect(stderr).toMatch(/^demo failed: Error: exploded\n/);
+        expect(stderr).toContain('at fake (file.ts:1:1)');
         expect(process.exitCode).toBe(1);
       });
 

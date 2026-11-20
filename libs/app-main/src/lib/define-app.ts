@@ -119,19 +119,6 @@ const STANDARD_FLAGS = [
 const withoutCliFlag = (argv: readonly string[]): readonly string[] =>
   argv.filter((argument) => argument !== '--cli');
 
-/**
- * Runs a cleanup whose failure must not replace the error being reported. A `close` written as a plain
- * function can throw synchronously or return nothing, so the call itself is inside the `try`, not
- * just the promise it should return.
- */
-const quietly = async (cleanup: () => unknown): Promise<void> => {
-  try {
-    await cleanup();
-  } catch {
-    // the caller is already reporting a more important failure
-  }
-};
-
 /** An operator's error, or anything thrown, as the text to show. */
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -183,6 +170,27 @@ export function defineApp<Options = undefined>(
     taken.add(flag);
   }
 
+  /**
+   * Runs a cleanup whose failure must not replace the error being reported. A `close` written as a
+   * plain function can throw synchronously or return nothing, so the call itself is inside the `try`,
+   * not just the promise it should return.
+   *
+   * The failure is logged, not dropped: Nest's `close()` rejects without disposing the application
+   * when a provider's `onModuleInit` threw, and a silent swallow would hide that the app leaked.
+   */
+  const quietly = async (
+    what: string,
+    cleanup: () => unknown,
+  ): Promise<void> => {
+    try {
+      await cleanup();
+    } catch (error) {
+      Logger.warn(
+        `${name}: ${what} failed while handling an earlier error: ${messageOf(error)}`,
+      );
+    }
+  };
+
   const withTool = async <T>(
     options: Options | undefined,
     use: (runtime: CqrsToolRuntime) => Promise<T>,
@@ -193,7 +201,7 @@ export function defineApp<Options = undefined>(
       result = await use(tool.runtime);
     } catch (error) {
       // The failure being reported is the one from `use`; a failing close must not replace it.
-      await quietly(() => tool.close());
+      await quietly('closing the tool', () => tool.close());
       throw error;
     }
     await tool.close();
@@ -239,13 +247,16 @@ export function defineApp<Options = undefined>(
       const port =
         typeof address === 'object' && address ? address.port : requestedPort;
       Logger.log(
-        `${name} is serving on: http://localhost:${port}${http.helpPath ?? `/${[prefix, name, 'help'].filter(Boolean).join('/')}`}`,
+        `${name} is serving on: http://localhost:${port}${
+          http.helpPath ??
+          `/${[...prefix.split('/'), name, 'help'].filter(Boolean).join('/')}`
+        }`,
       );
       return app;
     } catch (error) {
       // A half-started application holds modules, timers and possibly a socket; release them, and
       // report the failure that got us here rather than one from the cleanup.
-      await quietly(() => app.close());
+      await quietly('closing the application', () => app.close());
       throw error;
     }
   };
