@@ -172,7 +172,7 @@ describe('defineApp', () => {
     it('waits for the close before rethrowing the transport error', async () => {
       const { app, closed } = build();
       const closing = deferred();
-      closed.mockReturnValue(closing.promise);
+      closed.mockReturnValue(closing.promise as never);
       vi.mocked(runOneShot).mockRejectedValue(new Error('real failure'));
       let settled = false;
 
