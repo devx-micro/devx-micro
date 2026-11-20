@@ -204,6 +204,19 @@ describe('what is refused, with nothing changed', () => {
       /the source or inside it/,
     );
     expect(await refusal(from, `${from}/`)).toMatch(/same directory/);
+    // Other spellings of "inside": duplicate slashes and `.` segments fold away before the compare.
+    for (const spelled of [
+      `${base}//old/x/y`,
+      `${base}/./old/x/y`,
+      `${from}/x/./y`,
+    ]) {
+      expect(await refusal(from, spelled)).toMatch(/the source or inside it/);
+    }
+    expect(await refusal(`${base}/./old`, join(from, 'x'))).toMatch(
+      /the source or inside it/,
+    );
+    // A prefix sibling is not inside.
+    expect(existsSync(`${from}2`)).toBe(false);
     // Refused before any mkdir, so the source is not even touched.
     expect(statSync(from).mtimeMs).toBe(before);
 
@@ -262,10 +275,11 @@ describe('what is refused, with nothing changed', () => {
     expect(existsSync(join(from, 'CURRENT'))).toBe(true);
   });
 
-  it('a destination on another filesystem, if this machine has one', async () => {
-    const other = '/dev/shm';
-    if (!existsSync(other) || statSync(other).dev === statSync(base).dev)
-      return;
+  // Reported as skipped, not silently passed, where this machine has no second filesystem.
+  const other = '/dev/shm';
+  const second =
+    existsSync(other) && statSync(other).dev !== statSync(tmpdir()).dev;
+  it.skipIf(!second)('a destination on another filesystem', async () => {
     const from = join(base, 'old');
     seedStore(from);
     const target = mkdtempSync(join(other, 'project-marker-xdev-'));

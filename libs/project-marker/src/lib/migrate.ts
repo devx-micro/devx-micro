@@ -1,5 +1,5 @@
 import { lstat, mkdir, rename, rmdir } from 'node:fs/promises';
-import { dirname, isAbsolute, sep } from 'node:path';
+import { dirname, isAbsolute, resolve, sep } from 'node:path';
 
 import { WorkspaceError } from './marker';
 
@@ -152,8 +152,9 @@ export async function migrateAppState(
   }
 
   // Before any `mkdir`: creating the destination's parents inside the source would touch it.
-  const lexicalFrom = from.replace(/[\\/]+$/, '');
-  const lexicalTo = to.replace(/[\\/]+$/, '');
+  // `resolve` is safe here: `..` is already refused, so it only folds `//`, `/./` and trailing slashes.
+  const lexicalFrom = resolve(from);
+  const lexicalTo = resolve(to);
   if (lexicalTo === lexicalFrom || lexicalTo.startsWith(lexicalFrom + sep)) {
     throw new WorkspaceError(
       `Refusing to migrate ${from} into ${to}: the destination is the source or inside it. ` +
@@ -194,7 +195,7 @@ export async function migrateAppState(
               ? `${to} exists and is not a directory (a file or a symbolic link is never replaced)`
               : `the move failed (${codeOf(error)}): ${messageOf(error)}`;
     throw new WorkspaceError(
-      `Refusing to migrate ${from} into ${to}: ${why}. The source was not touched; ${undone}.`,
+      `Refusing to migrate ${from} into ${to}: ${why}. The source's contents were not changed; ${undone}.`,
     );
   }
   return { from, to };

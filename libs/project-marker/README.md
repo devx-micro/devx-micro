@@ -129,7 +129,8 @@ It refuses, leaving both sides as they were, when:
 
 An existing **empty** directory at `to` is replaced on POSIX (Windows refuses it). Missing parents of
 `to` are created, and if the move then fails, only the ones this call created, and only while still
-empty, are removed (`rmdir`, never a recursive delete, so another process's data is never touched). Every refusal throws
+empty, are removed (`rmdir`, never a recursive delete, so another process's data is never touched). If two moves race to create the same new parent and one fails, the other can fail
+with `ENOENT` once; its source is intact and retrying succeeds. Every refusal throws
 `WorkspaceError`, and its message says which case it was.
 
 `WorkspaceError` carries a `code` (`no-workspace` or `invalid-project-name`) so a transport can
