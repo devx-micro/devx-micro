@@ -103,26 +103,44 @@ name is refused too).
 and the bytes of every file, because embedded stores keep lock, log and manifest files beside their
 data, and a copy missing any of them is corrupt rather than partial.
 
-It refuses, **before changing anything on either side**, when:
+**Each path is resolved once, as the operating system resolves it**, and that one real path is
+used for every check and every change. This matters for `..`: `<link>/../x` means `x` beside the
+link's **target**, not beside the link, and a check that read it one way while the copy read it the
+other could put the copy inside the source. Links earlier in either path are followed as the
+operating system follows them; a link as the **last** component of either path is refused.
+
+It refuses, **before changing anything on either side** (the message ends "Nothing was changed"),
+when:
 
 - `from` does not exist, is not a directory, or is itself a symbolic link;
 - `from` holds a **symbolic link** anywhere, or any other special file (pipe, socket, device). A link
   cannot be verified by reading through it, and a copied link can dangle once the source is
   removed, so links are refused rather than copied. Replace them with what they point to, or remove
   them, and migrate again;
+- `to` is a **symbolic link**, even a dangling one or one to an empty directory. Name the directory
+  it points to instead; the link itself is never deleted;
 - `to` exists and is not a directory, or already holds files (merging two stores yields one that
   opens and is wrong);
-- `from` and `to` overlap: one inside the other, or the same directory, compared after resolving
-  symbolic links.
+- a component of `to`'s path is a file, or a link to nothing;
+- `to` uses `..` after a component that does not exist yet, so it has no single meaning;
+- `from` and `to` overlap: one inside the other, or the same directory, compared on the resolved
+  paths;
+- a path cannot be inspected, for example a directory in either tree that cannot be read
+  (`EACCES`). The message names the path and the error code.
 
-If the copy or its verification fails, the **source is untouched**, and:
+If creating the destination, the copy or its verification fails, the **source is untouched**, and:
 
-- a destination this call **created is removed**, so you can simply run it again;
+- if this call **created directories** for the destination (`to` and any missing parents), the
+  first one it created is **removed**, which removes the rest, so you can simply run it again. The
+  message names the directory it removed;
+- if it **created nothing** (for example, a parent could not be written), the message says
+  "nothing was created";
 - a destination that **already existed** (empty) is **left as it is**, and may hold a partial copy;
-  empty it before retrying.
+  empty it before retrying;
+- if that cleanup itself fails, the message names what to remove before retrying.
 
-If only removing the source fails, the copy at `to` is complete and verified, and the source may be
-partly removed; the error says so, and the rest must be removed by hand.
+If only removing the source fails, the copy is complete and verified, and the source may be partly
+removed; the error says so, and the rest must be removed by hand.
 
 Every one of these failures throws `WorkspaceError`, and its message says which case it was.
 

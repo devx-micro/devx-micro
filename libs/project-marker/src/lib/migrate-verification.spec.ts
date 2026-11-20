@@ -5,6 +5,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import * as fsPromises from 'node:fs/promises';
@@ -28,17 +29,26 @@ import { migrateAppState } from './migrate';
 const real = vi.hoisted(() => ({
   cp: undefined as unknown as typeof import('node:fs/promises').cp,
   rm: undefined as unknown as typeof import('node:fs/promises').rm,
+  mkdir: undefined as unknown as typeof import('node:fs/promises').mkdir,
 }));
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
   real.cp = actual.cp;
   real.rm = actual.rm;
-  return { ...actual, cp: vi.fn(actual.cp), rm: vi.fn(actual.rm) };
+  real.mkdir = actual.mkdir;
+  return {
+    ...actual,
+    cp: vi.fn(actual.cp),
+    rm: vi.fn(actual.rm),
+    mkdir: vi.fn(actual.mkdir),
+  };
 });
 
 const realCp: typeof fsPromises.cp = (...args) => real.cp(...args);
 const realRm: typeof fsPromises.rm = (...args) => real.rm(...args);
+const realMkdir = ((...args: Parameters<typeof fsPromises.mkdir>) =>
+  real.mkdir(...args)) as typeof fsPromises.mkdir;
 
 let base: string;
 let from: string;
@@ -57,6 +67,8 @@ afterEach(() => {
   vi.mocked(fsPromises.cp).mockImplementation(realCp);
   vi.mocked(fsPromises.rm).mockReset();
   vi.mocked(fsPromises.rm).mockImplementation(realRm);
+  vi.mocked(fsPromises.mkdir).mockReset();
+  vi.mocked(fsPromises.mkdir).mockImplementation(realMkdir);
 });
 
 const sourceIsIntact = () => {
@@ -161,7 +173,9 @@ describe('what a failed migration leaves behind', () => {
     const failure = await migrateAppState(from, to).catch((error) => error);
 
     expect(failure).toBeInstanceOf(WorkspaceError);
-    expect((failure as Error).message).toMatch(/Copying .* failed: ENOSPC/);
+    expect((failure as Error).message).toMatch(
+      /Copying .* failed \(ENOSPC\): ENOSPC/,
+    );
     expect(existsSync(to)).toBe(false);
     sourceIsIntact();
   });
@@ -177,7 +191,7 @@ describe('what a failed migration leaves behind', () => {
 
     expect(failure).toBeInstanceOf(WorkspaceError);
     expect((failure as Error).message).toMatch(
-      /complete and verified.*removing .* failed: EACCES/s,
+      /complete and verified.*removing .* failed \(EACCES\)/s,
     );
     // The verified copy is kept: it is the only copy guaranteed whole.
     expect(readFileSync(join(to, 'CURRENT'), 'utf8')).toBe('MANIFEST-000001\n');
@@ -215,8 +229,62 @@ describe('a failure that is not an Error', () => {
     const failure = await migrateAppState(from, to).catch((error) => error);
 
     expect(failure).toBeInstanceOf(WorkspaceError);
-    expect((failure as Error).message).toMatch(/failed: disk went away/);
+    expect((failure as Error).message).toMatch(
+      /failed \(unknown error\): disk went away/,
+    );
     expect(existsSync(to)).toBe(false);
+    sourceIsIntact();
+  });
+});
+
+describe('cleanup removes exactly what this call created', () => {
+  /**
+   * 🔴 `mkdir -p` may create several directories. Removing only the destination would leave the
+   * parents it created behind, so the cleanup removes the first directory it created.
+   */
+  it('removes the missing parents it created, and names the one it removed', async () => {
+    const nested = join(base, 'p1', 'p2', 'new');
+    copyThen((target) =>
+      writeFileSync(join(target, 'CURRENT'), 'XXXXXXXXXXXXXXXX'),
+    );
+
+    const failure = await migrateAppState(from, nested).catch((error) => error);
+
+    expect(failure).toBeInstanceOf(WorkspaceError);
+    expect((failure as Error).message).toContain(
+      `${join(base, 'p1')}, which this call created, was removed`,
+    );
+    expect(existsSync(join(base, 'p1'))).toBe(false);
+    sourceIsIntact();
+  });
+
+  it('never hands a symbolic-link destination to cp', async () => {
+    mkdirSync(join(base, 'real'));
+    symlinkSync(join(base, 'real'), to);
+
+    await expect(migrateAppState(from, to)).rejects.toThrow(/symbolic link/);
+
+    expect(fsPromises.cp).not.toHaveBeenCalled();
+    sourceIsIntact();
+  });
+});
+
+describe('when creating the destination fails partway', () => {
+  it('removes the directories it did create before failing', async () => {
+    const nested = join(base, 'p1', 'p2', 'new');
+    vi.mocked(fsPromises.mkdir).mockImplementationOnce(async () => {
+      mkdirSync(join(base, 'p1'));
+      throw Object.assign(new Error('EIO: i/o error, mkdir'), { code: 'EIO' });
+    });
+
+    const failure = await migrateAppState(from, nested).catch((error) => error);
+
+    expect(failure).toBeInstanceOf(WorkspaceError);
+    expect((failure as Error).message).toMatch(/Creating .* failed \(EIO\)/);
+    expect((failure as Error).message).toContain(
+      `${join(base, 'p1')}, which this call created, was removed`,
+    );
+    expect(existsSync(join(base, 'p1'))).toBe(false);
     sourceIsIntact();
   });
 });

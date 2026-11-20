@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -12,7 +13,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -295,7 +296,7 @@ describe('paths that cannot be inspected or created', () => {
     },
   );
 
-  it('reports a destination that cannot be created as a WorkspaceError, and keeps the source', async () => {
+  it('refuses a destination beneath a file up front, without claiming it created anything', async () => {
     const from = join(base, 'old');
     mkdirSync(from);
     writeFileSync(join(from, 'f'), 'x');
@@ -307,11 +308,297 @@ describe('paths that cannot be inspected or created', () => {
     ).catch((error) => error);
 
     expect(failure).toBeInstanceOf(WorkspaceError);
-    expect((failure as Error).message).toMatch(
-      /Migrating .* failed: .*ENOTDIR/,
-    );
-    expect((failure as Error).message).toMatch(/left untouched/);
+    expect((failure as Error).message).toMatch(/a-file is not a directory/);
+    expect((failure as Error).message).not.toMatch(/created/);
     expect(readFileSync(join(from, 'f'), 'utf8')).toBe('x');
     expect(readFileSync(join(base, 'a-file'), 'utf8')).toBe('y');
   });
+
+  const lockedWhile = async (directory: string, run: () => Promise<void>) => {
+    chmodSync(directory, 0o000);
+    try {
+      await run();
+    } finally {
+      chmodSync(directory, 0o700);
+    }
+  };
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'reports an unreadable directory inside the source as a WorkspaceError, changing nothing',
+    async () => {
+      const from = join(base, 'old');
+      mkdirSync(join(from, 'locked'), { recursive: true });
+      writeFileSync(join(from, 'locked', 'x'), '1');
+      const to = join(base, 'new');
+      await lockedWhile(join(from, 'locked'), async () => {
+        const failure = await migrateAppState(from, to).catch((error) => error);
+        expect(failure).toBeInstanceOf(WorkspaceError);
+        expect((failure as Error).message).toMatch(
+          /Cannot inspect .*old\/locked.*EACCES.*Nothing was changed/,
+        );
+      });
+      expect(existsSync(to)).toBe(false);
+      expect(readFileSync(join(from, 'locked', 'x'), 'utf8')).toBe('1');
+    },
+  );
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'reports an unreadable directory inside an empty destination as a WorkspaceError, changing nothing',
+    async () => {
+      const from = join(base, 'old');
+      mkdirSync(from);
+      writeFileSync(join(from, 'f'), '1');
+      const to = join(base, 'new');
+      mkdirSync(join(to, 'locked'), { recursive: true });
+      await lockedWhile(join(to, 'locked'), async () => {
+        const failure = await migrateAppState(from, to).catch((error) => error);
+        expect(failure).toBeInstanceOf(WorkspaceError);
+        expect((failure as Error).message).toMatch(
+          /Cannot inspect .*new\/locked.*EACCES.*Nothing was changed/,
+        );
+      });
+      expect(readdirSync(to)).toEqual(['locked']);
+      expect(readFileSync(join(from, 'f'), 'utf8')).toBe('1');
+    },
+  );
+});
+
+/**
+ * 🔴 One destination, one meaning. `..` after a symbolic link means the link's TARGET's parent to
+ * the operating system, but the link's own parent to anything that normalises the path as text. If
+ * the overlap check, `mkdir`, `cp` and the cleanup each read `to` their own way, the copy can
+ * land inside the source, or in a directory the caller never named. So `to` is resolved once, as
+ * the operating system resolves it, and that one path is used for everything.
+ */
+describe('the destination is resolved once, as the operating system resolves it', () => {
+  const seed = () => {
+    const from = join(base, 'src');
+    mkdirSync(join(from, 'sub'), { recursive: true });
+    writeFileSync(join(from, 'f'), 'data');
+    writeFileSync(join(from, 'sub', 'g'), 'more');
+    return from;
+  };
+  const tree = (root: string): string[] => {
+    const out: string[] = [];
+    const walk = (directory: string) => {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const path = join(directory, entry.name);
+        out.push(relative(root, path));
+        if (entry.isDirectory()) walk(path);
+      }
+    };
+    walk(root);
+    return out.sort();
+  };
+
+  it('refuses <link>/../x when, read that way, x lands inside the source', async () => {
+    const from = seed();
+    symlinkSync(join(from, 'sub'), join(base, 'lnk'));
+    const before = tree(from);
+
+    const failure = await migrateAppState(from, `${base}/lnk/../newdir`).catch(
+      (error) => error,
+    );
+
+    expect(failure).toBeInstanceOf(WorkspaceError);
+    expect((failure as Error).message).toMatch(/overlap/);
+    expect(tree(from)).toEqual(before);
+    expect(existsSync(join(base, 'newdir'))).toBe(false);
+  });
+
+  it('leaves a directory with the text-normalised name alone', async () => {
+    const from = seed();
+    symlinkSync(join(from, 'sub'), join(base, 'lnk'));
+    mkdirSync(join(base, 'newdir'));
+
+    await expect(
+      migrateAppState(from, `${base}/lnk/../newdir`),
+    ).rejects.toThrow(/overlap/);
+
+    expect(readdirSync(join(base, 'newdir'))).toEqual([]);
+  });
+
+  it('migrates to where the operating system says <link>/../x is', async () => {
+    const from = seed();
+    mkdirSync(join(base, 'x', 'y'), { recursive: true });
+    symlinkSync(join(base, 'x', 'y'), join(base, 'ly'));
+    mkdirSync(join(base, 'out'));
+
+    await expect(
+      migrateAppState(from, `${base}/ly/../out`),
+    ).resolves.toMatchObject({ files: 2 });
+
+    expect(readFileSync(join(base, 'x', 'out', 'f'), 'utf8')).toBe('data');
+    expect(readdirSync(join(base, 'out'))).toEqual([]);
+    expect(existsSync(from)).toBe(false);
+  });
+
+  it('refuses .. after a directory that does not exist, since it has no single meaning', async () => {
+    const from = seed();
+    await expect(
+      migrateAppState(from, `${base}/missing/../new`),
+    ).rejects.toThrow(/does not exist/);
+    expect(existsSync(join(base, 'missing'))).toBe(false);
+    expect(existsSync(join(base, 'new'))).toBe(false);
+  });
+
+  it('resolves a relative destination against the current directory, the same way', async () => {
+    const from = seed();
+    const previous = process.cwd();
+    process.chdir(from);
+    try {
+      await expect(migrateAppState(from, './child')).rejects.toThrow(/overlap/);
+    } finally {
+      process.chdir(previous);
+    }
+    expect(existsSync(join(from, 'child'))).toBe(false);
+  });
+
+  /**
+   * 🔴 Whether the destination existed is decided without following a link. A dangling link reads
+   * as absent to `stat`, and a cleanup that believed it had created it would delete the caller's
+   * link.
+   */
+  it.each([
+    ['into the source', (from: string) => join(from, 'newsub')],
+    ['elsewhere', () => join(base, 'elsewhere', 'x')],
+  ])(
+    'refuses a destination that is a dangling link %s, and keeps the link',
+    async (_label, target) => {
+      const from = seed();
+      const to = join(base, 'dang');
+      symlinkSync(target(from), to);
+
+      const failure = await migrateAppState(from, to).catch((error) => error);
+
+      expect(failure).toBeInstanceOf(WorkspaceError);
+      expect((failure as Error).message).toMatch(/symbolic link/);
+      expect(lstatSync(to).isSymbolicLink()).toBe(true);
+      expect(readlinkSync(to)).toBe(target(from));
+      expect(existsSync(join(from, 'newsub'))).toBe(false);
+    },
+  );
+
+  it('refuses a destination reached through a dangling link, and keeps the link', async () => {
+    const from = seed();
+    symlinkSync(join(from, 'zz'), join(base, 'dc'));
+
+    const failure = await migrateAppState(from, join(base, 'dc', 'new')).catch(
+      (error) => error,
+    );
+
+    expect(failure).toBeInstanceOf(WorkspaceError);
+    expect((failure as Error).message).toMatch(
+      /dc is a symbolic link to nothing/,
+    );
+    expect(lstatSync(join(base, 'dc')).isSymbolicLink()).toBe(true);
+    expect(existsSync(join(from, 'zz'))).toBe(false);
+  });
+
+  it('refuses a destination that is a link to an empty directory, before copying', async () => {
+    const from = seed();
+    mkdirSync(join(base, 'real'));
+    symlinkSync(join(base, 'real'), join(base, 'tl'));
+
+    const failure = await migrateAppState(from, join(base, 'tl')).catch(
+      (error) => error,
+    );
+
+    expect(failure).toBeInstanceOf(WorkspaceError);
+    expect((failure as Error).message).toMatch(/tl: it is a symbolic link/);
+    expect((failure as Error).message).toMatch(/Nothing was changed/);
+    expect(readdirSync(join(base, 'real'))).toEqual([]);
+    expect(lstatSync(join(base, 'tl')).isSymbolicLink()).toBe(true);
+  });
+
+  it('follows a link in the source path to the real directory', async () => {
+    const from = seed();
+    symlinkSync(base, `${base}-alias`);
+    try {
+      await expect(
+        migrateAppState(`${base}-alias/src`, join(base, 'moved')),
+      ).resolves.toMatchObject({ files: 2 });
+    } finally {
+      rmSync(`${base}-alias`);
+    }
+    expect(existsSync(from)).toBe(false);
+    expect(readFileSync(join(base, 'moved', 'sub', 'g'), 'utf8')).toBe('more');
+  });
+});
+
+describe('more shapes of path, resolved the same way', () => {
+  const seed = () => {
+    const from = join(base, 'src');
+    mkdirSync(from, { recursive: true });
+    writeFileSync(join(from, 'f'), 'data');
+    return from;
+  };
+
+  it('refuses a destination reached through a link to a file', async () => {
+    const from = seed();
+    writeFileSync(join(base, 'plain'), 'x');
+    symlinkSync(join(base, 'plain'), join(base, 'flink'));
+    await expect(
+      migrateAppState(from, join(base, 'flink', 'new')),
+    ).rejects.toThrow(/flink is not a directory.*Nothing was changed/);
+    expect(readFileSync(join(base, 'plain'), 'utf8')).toBe('x');
+  });
+
+  it('accepts a source path that ends in "."', async () => {
+    const from = seed();
+    await expect(
+      migrateAppState(`${from}/.`, join(base, 'moved')),
+    ).resolves.toMatchObject({ files: 1 });
+    expect(existsSync(from)).toBe(false);
+  });
+
+  it('ignores "." inside the part of the destination that does not exist yet', async () => {
+    const from = seed();
+    await expect(
+      migrateAppState(from, `${base}/n1/./n2`),
+    ).resolves.toMatchObject({ files: 1 });
+    expect(readFileSync(join(base, 'n1', 'n2', 'f'), 'utf8')).toBe('data');
+  });
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'reports a link it may not resolve as a WorkspaceError, changing nothing',
+    async () => {
+      const from = seed();
+      mkdirSync(join(base, 'locked', 'sub'), { recursive: true });
+      symlinkSync(join(base, 'locked', 'sub'), join(base, 'ln'));
+      chmodSync(join(base, 'locked'), 0o000);
+      try {
+        await expect(
+          migrateAppState(from, join(base, 'ln', 'new')),
+        ).rejects.toThrow(/Cannot inspect .*EACCES.*Nothing was changed/);
+      } finally {
+        chmodSync(join(base, 'locked'), 0o700);
+      }
+      expect(readdirSync(join(base, 'locked', 'sub'))).toEqual([]);
+    },
+  );
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'says nothing was created when the destination cannot be created',
+    async () => {
+      const from = seed();
+      mkdirSync(join(base, 'ro'));
+      chmodSync(join(base, 'ro'), 0o500);
+      let failure: unknown;
+      try {
+        failure = await migrateAppState(
+          from,
+          join(base, 'ro', 'p1', 'new'),
+        ).catch((error) => error);
+      } finally {
+        chmodSync(join(base, 'ro'), 0o700);
+      }
+      expect(failure).toBeInstanceOf(WorkspaceError);
+      expect((failure as Error).message).toMatch(
+        /Creating .* failed \(EACCES\).*left untouched; nothing was created\.$/s,
+      );
+      expect(readdirSync(join(base, 'ro'))).toEqual([]);
+      expect(readFileSync(join(from, 'f'), 'utf8')).toBe('data');
+    },
+  );
 });
