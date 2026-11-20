@@ -1,0 +1,50 @@
+{
+  "name": "project-marker",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/project-marker/src",
+  "projectType": "library",
+  "tags": ["scope:shared", "type:util"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/project-marker",
+        "main": "libs/project-marker/src/index.ts",
+        "tsConfig": "libs/project-marker/tsconfig.lib.json",
+        "assets": [
+          {
+            "input": "{workspaceRoot}",
+            "glob": "LICENSE",
+            "output": "."
+          },
+          {
+            "input": "libs/project-marker",
+            "glob": "README.md",
+            "output": "."
+          }
+        ]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "options": {
+        "command": "vitest run",
+        "cwd": "libs/project-marker"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "commands": [
+          "tsc -p tsconfig.lib.json --noEmit",
+          "tsc -p tsconfig.spec.json --noEmit"
+        ],
+        "cwd": "libs/project-marker",
+        "parallel": true
+      }
+    }
+  }
+}

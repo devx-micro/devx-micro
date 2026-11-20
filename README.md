@@ -17,6 +17,7 @@ An [Nx](https://nx.dev) workspace for shared, reusable TypeScript libraries, pub
 | [`@devx-micro/app-http`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-http)                   | Renders that envelope over HTTP: exit code to status mapping, and `unwrap` to a response or `HttpException`.                           |
 | [`@devx-micro/app-main`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-main)                   | The process entry point: `defineApp` builds the CLI, REPL, sidecar and HTTP entry points and the `argv` mode dispatch.                 |
 | [`@devx-micro/app-observability`](https://github.com/devx-micro/devx-micro/tree/main/libs/app-observability) | The recorder port, observation record shape, content addressing (RFC 8785 + SHA-256) and pure inference-run logic. No storage, no I/O. |
+| [`@devx-micro/project-marker`](https://github.com/devx-micro/devx-micro/tree/main/libs/project-marker)       | Finds the project a tool is standing in by walking up to its marker file, and fails loudly when there is none. Standalone.             |
 
 Each package README documents installation, usage and behaviour. The full API reference is generated
 with TypeDoc (see [Documentation](#documentation)).
@@ -78,7 +79,7 @@ builds with SWC to `dist/libs/<name>`.
 | Contributing                  | [CONTRIBUTING.md](CONTRIBUTING.md)              |
 | API reference (TypeDoc)       | `npm run docs`, then open `docs/api/index.html` |
 
-`npm run docs` builds one HTML site covering all three packages, using each package's `README.md`
+`npm run docs` builds one HTML site covering every package, using each package's `README.md`
 as its landing page. `npm run docs:check` runs the same validation without writing output, which is
 useful in CI.
 

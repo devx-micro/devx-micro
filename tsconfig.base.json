@@ -22,7 +22,8 @@
         "./libs/app-observability/src/index.ts"
       ],
       "@devx-micro/app-runtime": ["./libs/app-runtime/src/index.ts"],
-      "@devx-micro/app-http": ["./libs/app-http/src/index.ts"]
+      "@devx-micro/app-http": ["./libs/app-http/src/index.ts"],
+      "@devx-micro/project-marker": ["./libs/project-marker/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "dist", "tmp"]
