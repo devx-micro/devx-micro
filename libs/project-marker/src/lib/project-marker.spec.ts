@@ -165,6 +165,9 @@ describe('the app name in appStatePathOf is one plain segment', () => {
     ['a path with a slash', 'a/b'],
     ['a path with a backslash', 'a\\b'],
     ['a NUL byte', 'a\0b'],
+    ['whitespace only', ' '],
+    ['leading whitespace', ' a'],
+    ['trailing whitespace', 'a '],
     ['the marker file name', MARKER_FILENAME],
     ['not a string', 7],
     ['missing', undefined],
@@ -174,7 +177,7 @@ describe('the app name in appStatePathOf is one plain segment', () => {
     );
   });
 
-  it.each(['store', 'shared-kernel', '.cache', 'v2.index'])(
+  it.each(['store', 'shared-kernel', '.cache', 'v2.index', 'a b'])(
     'accepts %j',
     (app) => {
       expect(alpha.appStatePathOf(base, app)).toBe(join(base, '.alpha', app));

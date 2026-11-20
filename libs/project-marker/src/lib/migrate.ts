@@ -132,9 +132,12 @@ async function resolveOnce(given: string): Promise<Resolution> {
   // Join with the cwd as TEXT: `path.resolve` would already have removed `..`.
   const absolute = isAbsolute(given) ? given : `${process.cwd()}${sep}${given}`;
   const { root } = parse(absolute);
+  // On Windows both `/` and `\` separate components; on POSIX only `/` does, because `\` is a
+  // legal character in a file name and must be kept whole.
+  const split = process.platform === 'win32' ? /[\\/]+/ : /\/+/;
   const segments = absolute
     .slice(root.length)
-    .split(/[\\/]+/)
+    .split(split)
     .filter((segment) => segment !== '');
 
   let current = await inspecting(root, () => realpath(root));
@@ -169,12 +172,16 @@ async function resolveOnce(given: string): Promise<Resolution> {
       continue;
     }
     if (last) {
-      return {
-        kind: 'found',
-        path: candidate,
-        link: stats.isSymbolicLink(),
-        stats,
-      };
+      if (stats.isSymbolicLink()) {
+        // The caller refuses a link here; the path is only named, and `realpath` could fail on a
+        // dangling one, so report the link itself.
+        return { kind: 'found', path: candidate, link: true, stats };
+      }
+      // Canonicalise even the last component: on a case-insensitive filesystem the spelling the
+      // caller gave may differ from the name on disk, and every later check (the overlap test in
+      // particular) compares paths as text.
+      const real = await inspecting(candidate, () => realpath(candidate));
+      return { kind: 'found', path: real, link: false, stats };
     }
     if (stats.isSymbolicLink()) {
       const target = await inspecting(candidate, () =>
@@ -202,7 +209,10 @@ async function resolveOnce(given: string): Promise<Resolution> {
     if (!stats.isDirectory()) {
       return { kind: 'blocked', at: candidate, why: 'is not a directory' };
     }
-    current = candidate;
+    // Walk in the path the operating system reports, not the spelling the caller gave: on a
+    // case-insensitive filesystem the two differ, and `current` feeds every later step, including
+    // the existing prefix of a missing path.
+    current = await inspecting(candidate, () => realpath(candidate));
   }
 
   if (firstMissing !== undefined) {
@@ -314,6 +324,7 @@ async function resolveDestination(
  * says which case it was:
  *
  * - **Refused before any change; nothing is changed on either side:**
+ *   - the source or destination path is empty;
  *   - the source does not exist, is not a directory, is a link, or holds a link or special file;
  *   - the destination is a link, exists and is not a directory, or already holds files;
  *   - a component of the destination's path is a file, or a link to nothing;
@@ -339,6 +350,19 @@ export async function migrateAppState(
   from: string,
   to: string,
 ): Promise<MigrationResult> {
+  // An empty path is not "the current directory": `resolveOnce` would join it to the cwd and
+  // migrate from, or into, the caller's own working tree. Refuse it before anything is read.
+  if (from === '') {
+    throw new WorkspaceError(
+      'Refusing to migrate: the source path (from) is empty. Nothing was changed.',
+    );
+  }
+  if (to === '') {
+    throw new WorkspaceError(
+      'Refusing to migrate: the destination path (to) is empty. Nothing was changed.',
+    );
+  }
+
   const source = await resolveSource(from);
   const { path: destination, firstMissing } = await resolveDestination(to);
 

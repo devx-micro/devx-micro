@@ -102,15 +102,18 @@ export const markerPathIn = (directory: string, root: string): string =>
 /**
  * @internal Why `name` is not one plain path segment, or `undefined` if it is.
  *
- * Plain means: a non-empty string that is not `.` or `..` and holds no `/`, `\\` or NUL byte.
- * Node refuses a path with a NUL byte only when the path is used, which would surface a programming
- * error far from its cause, as the wrong kind of error.
+ * Plain means: a non-empty string that is not `.` or `..`, holds no `/`, `\\` or NUL byte, and has
+ * no whitespace at either end. Node refuses a path with a NUL byte only when the path is used,
+ * which would surface a programming error far from its cause, as the wrong kind of error.
+ * Whitespace at either end is invisible in every message that names the segment, and a
+ * whitespace-only name is not a name.
  */
 export const segmentProblem = (name: unknown): string | undefined => {
   if (typeof name !== 'string') return 'it is not a string';
   if (name === '') return 'it is empty';
   if (name === '.' || name === '..') return 'it names a relative directory';
   if (/[/\\\0]/.test(name)) return 'it contains a path separator or a NUL byte';
+  if (name.trim() !== name) return 'it has whitespace at either end';
   return undefined;
 };
 

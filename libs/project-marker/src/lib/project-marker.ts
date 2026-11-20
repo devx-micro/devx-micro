@@ -105,12 +105,7 @@ export interface ProjectMarker {
 }
 
 const assertDirectoryName = (directory: unknown): string => {
-  if (
-    segmentProblem(directory) !== undefined ||
-    // Whitespace at either end is invisible in every message that names the directory, and a
-    // whitespace-only name is not a name.
-    (directory as string).trim() !== directory
-  ) {
+  if (segmentProblem(directory) !== undefined) {
     throw new TypeError(
       `projectMarker: "directory" must be one plain path segment, such as ".acme"; got ` +
         `${JSON.stringify(directory) ?? String(directory)}.`,

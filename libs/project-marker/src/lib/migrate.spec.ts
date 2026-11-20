@@ -100,6 +100,61 @@ describe('migrating app state', () => {
     ).rejects.toThrow(/Nothing to migrate/);
     expect(existsSync(join(base, 'new'))).toBe(false);
   });
+
+  /**
+   * 🔴 An empty path is not "the current directory": without the refusal, `resolveOnce` would
+   * join it to the cwd and migrate from, or into, the caller's own working tree. Seeding the real
+   * source proves the refusal happens before anything is read or copied.
+   */
+  it('refuses an empty source path, changing nothing', async () => {
+    const from = join(base, 'old');
+    seedStore(from);
+
+    const failure = await migrateAppState('', join(base, 'new')).catch(
+      (error) => error,
+    );
+
+    expect(failure).toBeInstanceOf(WorkspaceError);
+    expect((failure as Error).message).toMatch(
+      /the source path \(from\) is empty/,
+    );
+    expect((failure as Error).message).toMatch(/Nothing was changed/);
+    expect(existsSync(from)).toBe(true);
+    expect(existsSync(join(base, 'new'))).toBe(false);
+  });
+
+  it('refuses an empty destination path, changing nothing', async () => {
+    const from = join(base, 'old');
+    seedStore(from);
+
+    const failure = await migrateAppState(from, '').catch((error) => error);
+
+    expect(failure).toBeInstanceOf(WorkspaceError);
+    expect((failure as Error).message).toMatch(
+      /the destination path \(to\) is empty/,
+    );
+    expect((failure as Error).message).toMatch(/Nothing was changed/);
+    expect(existsSync(from)).toBe(true);
+    expect(readdirSync(base)).toEqual(['old']);
+  });
+
+  /**
+   * A name made of whitespace is a legal file-system name, not an empty path: the refusal above
+   * applies to the empty STRING, and this pins that a whitespace-only name still migrates.
+   */
+  it('migrates a directory whose name is a single space', async () => {
+    const from = join(base, ' ');
+    const to = join(base, 'moved');
+    seedStore(from);
+
+    await expect(migrateAppState(from, to)).resolves.toMatchObject({
+      files: 4,
+    });
+    expect(existsSync(from)).toBe(false);
+    expect(readFileSync(join(to, 'nested', 'deep.ldb'), 'utf8')).toBe(
+      'nested payload',
+    );
+  });
 });
 
 describe('migrating an empty store', () => {
@@ -560,6 +615,39 @@ describe('more shapes of path, resolved the same way', () => {
     expect(readFileSync(join(base, 'n1', 'n2', 'f'), 'utf8')).toBe('data');
   });
 
+  /**
+   * 🔴 On POSIX a backslash is an ordinary character in a file name, not a path separator.
+   * Splitting on it would treat `a\b` as two components and report a source that does not exist
+   * (or create a destination with the wrong name).
+   */
+  it.skipIf(process.platform === 'win32')(
+    'keeps a backslash in a source name whole',
+    async () => {
+      const from = join(base, 'a\\b');
+      seedStore(from);
+      await expect(
+        migrateAppState(from, join(base, 'moved')),
+      ).resolves.toMatchObject({ files: 4 });
+      expect(existsSync(from)).toBe(false);
+      expect(
+        readFileSync(join(base, 'moved', 'nested', 'deep.ldb'), 'utf8'),
+      ).toBe('nested payload');
+    },
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'creates a destination whose name holds a backslash',
+    async () => {
+      const from = seed();
+      const to = join(base, 'new\\dir');
+      await expect(migrateAppState(from, to)).resolves.toMatchObject({
+        files: 1,
+      });
+      expect(readFileSync(join(to, 'f'), 'utf8')).toBe('data');
+      expect(existsSync(from)).toBe(false);
+    },
+  );
+
   it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
     'reports a link it may not resolve as a WorkspaceError, changing nothing',
     async () => {
@@ -599,6 +687,48 @@ describe('more shapes of path, resolved the same way', () => {
       );
       expect(readdirSync(join(base, 'ro'))).toEqual([]);
       expect(readFileSync(join(from, 'f'), 'utf8')).toBe('data');
+    },
+  );
+});
+
+/**
+ * The overlap check compares paths as text, so it can only see a case-only difference on a
+ * case-SENSITIVE filesystem; on a case-INSENSITIVE one, `Store` and `store` are the same
+ * directory and the overlap is real. Probe the filesystem once, and run the test only where it
+ * can actually fire — on a case-sensitive one the two names name different directories, and the
+ * migration is legitimately allowed.
+ */
+const fsCaseInsensitive = (() => {
+  const probe = mkdtempSync(join(tmpdir(), 'project-marker-case-'));
+  try {
+    mkdirSync(join(probe, 'Probe'));
+    return existsSync(join(probe, 'probe'));
+  } finally {
+    rmSync(probe, { recursive: true, force: true });
+  }
+})();
+
+describe('overlap that only a case-insensitive filesystem can see', () => {
+  it.skipIf(!fsCaseInsensitive)(
+    'refuses a destination that differs from the source only in case',
+    async () => {
+      const from = join(base, 'Store');
+      seedStore(from);
+
+      const failure = await migrateAppState(
+        from,
+        join(base, 'store', 'moved'),
+      ).catch((error) => error);
+
+      expect(failure).toBeInstanceOf(WorkspaceError);
+      expect((failure as Error).message).toMatch(/overlap/);
+      expect((failure as Error).message).toMatch(/Nothing was changed/);
+      // The source is untouched, and no directory was created inside it under the other spelling.
+      expect(existsSync(from)).toBe(true);
+      expect(readFileSync(join(from, 'nested', 'deep.ldb'), 'utf8')).toBe(
+        'nested payload',
+      );
+      expect(existsSync(join(base, 'store', 'moved'))).toBe(false);
     },
   );
 });
