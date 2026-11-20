@@ -70,20 +70,15 @@ function build(overrides: Partial<AppDefinition<Options>> = {}) {
 describe('defineApp', () => {
   let stderr: string;
   let logged: string[];
-  let warned: string[];
   beforeEach(() => {
     stderr = '';
     logged = [];
-    warned = [];
     vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
       stderr += String(chunk);
       return true;
     });
     vi.spyOn(Logger, 'log').mockImplementation((message: unknown) => {
       logged.push(String(message));
-    });
-    vi.spyOn(Logger, 'warn').mockImplementation((message: unknown) => {
-      warned.push(String(message));
     });
     process.exitCode = undefined;
     delete process.env['DEMO_APP_MAIN_PORT'];
@@ -205,16 +200,78 @@ describe('defineApp', () => {
       await expect(app.runCli(['x'])).rejects.toThrow('real failure');
     });
 
-    it('logs a warning, with the app name and the cause, when closing fails while another error is being reported', async () => {
+    it('writes a warning to stderr, with the app name and the cause, when closing fails while another error is being reported', async () => {
       const { app, closed } = build();
       closed.mockRejectedValue(new Error('dispose blew up'));
       vi.mocked(runOneShot).mockRejectedValue(new Error('real failure'));
 
       await expect(app.runCli(['x'])).rejects.toThrow('real failure');
 
-      expect(warned).toEqual([
-        'demo: closing the tool failed while handling an earlier error: dispose blew up',
-      ]);
+      expect(stderr).toBe(
+        'demo: warning: closing the tool failed while handling an earlier error: dispose blew up\n',
+      );
+    });
+
+    it("still writes the warning when the app has silenced Nest's Logger", async () => {
+      const { app, closed } = build();
+      vi.spyOn(Logger, 'warn').mockImplementation(() => {
+        throw new Error('the Logger must not be used for this');
+      });
+      closed.mockRejectedValue(new Error('dispose blew up'));
+      vi.mocked(runOneShot).mockRejectedValue(new Error('real failure'));
+
+      await expect(app.runCli(['x'])).rejects.toThrow('real failure');
+
+      expect(stderr).toContain('closing the tool failed');
+    });
+
+    it.each([
+      ['a null-prototype object', () => Object.create(null)],
+      [
+        'an object whose toString throws',
+        () => ({
+          toString() {
+            throw new Error('toString failed');
+          },
+        }),
+      ],
+      [
+        'an Error whose message getter throws',
+        () => {
+          const error = new Error('x');
+          Object.defineProperty(error, 'message', {
+            get() {
+              throw new Error('getter failed');
+            },
+          });
+          return error;
+        },
+      ],
+    ])(
+      'reports the original error when close throws %s, and still warns',
+      async (_label, thrown) => {
+        const { app, closed } = build();
+        closed.mockImplementation((async () => {
+          throw thrown();
+        }) as never);
+        vi.mocked(runOneShot).mockRejectedValue(new Error('real failure'));
+
+        await expect(app.runCli(['x'])).rejects.toThrow('real failure');
+        expect(stderr).toBe(
+          'demo: warning: closing the tool failed while handling an earlier error: <unprintable value>\n',
+        );
+      },
+    );
+
+    it('reports the original error when stderr itself throws while warning', async () => {
+      const { app, closed } = build();
+      vi.mocked(process.stderr.write).mockImplementation(() => {
+        throw new Error('stderr is closed');
+      });
+      closed.mockRejectedValue(new Error('dispose blew up'));
+      vi.mocked(runOneShot).mockRejectedValue(new Error('real failure'));
+
+      await expect(app.runCli(['x'])).rejects.toThrow('real failure');
     });
 
     it('does not warn when closing succeeds', async () => {
@@ -223,7 +280,7 @@ describe('defineApp', () => {
 
       await expect(app.runCli(['x'])).rejects.toThrow('real failure');
 
-      expect(warned).toEqual([]);
+      expect(stderr).toBe('');
     });
 
     it('defaults argv to the process arguments', async () => {
@@ -521,16 +578,47 @@ describe('defineApp', () => {
       ]);
     });
 
-    it('logs a warning, and still reports the startup error, when closing the application fails too', async () => {
+    it('warns on stderr, and still reports the startup error, when closing the application fails too', async () => {
       const { app, http } = build();
-      http.app.listen.mockRejectedValue(new Error('onModuleInit boom'));
-      http.app.close.mockRejectedValue(new Error('onModuleInit boom'));
+      http.app.listen.mockRejectedValue(new Error('listen failed'));
+      http.app.close.mockRejectedValue(new Error('onModuleDestroy failed'));
 
-      await expect(app.runApi()).rejects.toThrow('onModuleInit boom');
+      await expect(app.runApi()).rejects.toThrow('listen failed');
 
-      expect(warned).toEqual([
-        'demo: closing the application failed while handling an earlier error: onModuleInit boom',
-      ]);
+      expect(stderr).toBe(
+        'demo: warning: closing the application failed while handling an earlier error: onModuleDestroy failed\n',
+      );
+    });
+
+    it('warns the same way when configure failed and closing then fails too', async () => {
+      const { app, http } = build({
+        http: {
+          createApp: async () => http.app as never,
+          portEnv: 'DEMO_APP_MAIN_PORT',
+          defaultPort: 3999,
+          configure: () => {
+            throw new Error('configure failed');
+          },
+        },
+      });
+      http.app.close.mockRejectedValue(new Error('onModuleDestroy failed'));
+
+      await expect(app.runApi()).rejects.toThrow('configure failed');
+
+      expect(stderr).toContain(
+        'closing the application failed while handling an earlier error: onModuleDestroy failed',
+      );
+    });
+
+    it('reports the startup error when app.close throws a value that cannot be printed', async () => {
+      const { app, http } = build();
+      http.app.listen.mockRejectedValue(new Error('listen failed'));
+      http.app.close.mockImplementation((async () => {
+        throw Object.create(null);
+      }) as never);
+
+      await expect(app.runApi()).rejects.toThrow('listen failed');
+      expect(stderr).toContain('<unprintable value>');
     });
 
     it('resolves to the application it started', async () => {
@@ -709,6 +797,33 @@ describe('defineApp', () => {
       expect(run).not.toHaveBeenCalled();
     });
 
+    it('refuses a near miss of an extra mode flag', async () => {
+      const { app } = build({
+        extraModes: [{ flag: '--hub', run: async () => undefined }],
+      });
+
+      await app.main(['--hubx']);
+
+      expect(process.exitCode).toBe(2);
+      expect(stderr).toContain("unknown mode '--hubx'");
+    });
+
+    it('runs the first extra mode, in definition order, when two of their flags are given', async () => {
+      const first = vi.fn(async () => undefined);
+      const second = vi.fn(async () => undefined);
+      const { app } = build({
+        extraModes: [
+          { flag: '--hub', run: first },
+          { flag: '--sync', run: second },
+        ],
+      });
+
+      await app.main(['--sync', '--hub']);
+
+      expect(first).toHaveBeenCalledTimes(1);
+      expect(second).not.toHaveBeenCalled();
+    });
+
     it('runs an extra mode with the options and the full argv', async () => {
       const run = vi.fn(async () => undefined);
       const { app } = build({ extraModes: [{ flag: '--hub', run }] });
@@ -728,11 +843,12 @@ describe('defineApp', () => {
     });
 
     it('prints the help text instead when there are no arguments and no HTTP mode', async () => {
-      const { app } = build({ http: undefined });
+      const { app, createTool } = build({ http: undefined });
 
-      await app.main([]);
+      await app.main([], { tag: 'help' });
 
       expect(runOneShot).toHaveBeenCalledWith(runtime, ['--help']);
+      expect(createTool).toHaveBeenCalledWith({ tag: 'help' });
     });
 
     it('runs anything else as a one-shot CLI, passing options, and sets the exit code', async () => {
@@ -872,6 +988,17 @@ describe('defineApp', () => {
         expect(stderr).toMatch(/^demo failed: Error: exploded\n/);
         expect(stderr).toContain('at fake (file.ts:1:1)');
         expect(process.exitCode).toBe(1);
+      });
+
+      it('falls back to the message for an Error with no stack', async () => {
+        const { app } = build();
+        const failure = new Error('no stack here');
+        failure.stack = undefined;
+        vi.mocked(runOneShot).mockRejectedValue(failure);
+
+        await app.main(['x']);
+
+        expect(stderr).toBe('demo failed: no stack here\n');
       });
 
       it('treats nothing as an operator error when no predicate is given', async () => {
