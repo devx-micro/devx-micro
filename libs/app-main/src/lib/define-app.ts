@@ -119,9 +119,20 @@ const STANDARD_FLAGS = [
 const withoutCliFlag = (argv: readonly string[]): readonly string[] =>
   argv.filter((argument) => argument !== '--cli');
 
-/** An operator's error, or anything thrown, as the text to show. */
-const messageOf = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
+/**
+ * An operator's error, or anything thrown, as the text to show.
+ *
+ * 🔴 **It never throws.** It runs while another failure is being reported, and anything can be thrown:
+ * `String(Object.create(null))` throws, a `toString` can throw, an Error's `message` can be a getter
+ * that throws. Any of those escaping from here would replace the failure it was describing.
+ */
+const messageOf = (error: unknown): string => {
+  try {
+    return error instanceof Error ? String(error.message) : String(error);
+  } catch {
+    return '<unprintable value>';
+  }
+};
 
 /**
  * Builds the four entry points every CQRS tool application repeats — one-shot CLI, REPL, sidecar and
@@ -164,11 +175,39 @@ export function defineApp<Options = undefined>(
   for (const { flag } of extraModes) {
     if (taken.has(flag)) {
       throw new Error(
-        `${name}: extra mode '${flag}' is already a mode (standard or repeated)`,
+        `${name}: extra mode '${flag}' is already taken (a standard flag, or another extra mode)`,
       );
     }
     taken.add(flag);
   }
+
+  /**
+   * Runs a cleanup whose failure must not replace the error being reported. A `close` written as a
+   * plain function can throw synchronously or return nothing, so the call itself is inside the `try`,
+   * not just the promise it should return.
+   *
+   * The failure is reported, not dropped: Nest's `close()` rejects without disposing the application
+   * when a provider's `onModuleDestroy` throws, and a silent swallow would hide that the app leaked.
+   * It goes to stderr rather than Nest's `Logger`, because an app started with `logger: false` (or
+   * errors only) silences the `Logger` — exactly the apps least likely to notice the leak otherwise.
+   * The write is guarded too: nothing in here may replace the error the caller is reporting.
+   */
+  const quietly = async (
+    what: string,
+    cleanup: () => unknown,
+  ): Promise<void> => {
+    try {
+      await cleanup();
+    } catch (error) {
+      try {
+        process.stderr.write(
+          `${name}: warning: ${what} failed while handling an earlier error: ${messageOf(error)}\n`,
+        );
+      } catch {
+        // stderr itself is unusable; the caller's error is still the one to report
+      }
+    }
+  };
 
   const withTool = async <T>(
     options: Options | undefined,
@@ -180,7 +219,7 @@ export function defineApp<Options = undefined>(
       result = await use(tool.runtime);
     } catch (error) {
       // The failure being reported is the one from `use`; a failing close must not replace it.
-      await tool.close().catch(() => undefined);
+      await quietly('closing the tool', () => tool.close());
       throw error;
     }
     await tool.close();
@@ -226,13 +265,16 @@ export function defineApp<Options = undefined>(
       const port =
         typeof address === 'object' && address ? address.port : requestedPort;
       Logger.log(
-        `${name} is serving on: http://localhost:${port}${http.helpPath ?? `/${prefix}/${name}/help`}`,
+        `${name} is serving on: http://localhost:${port}${
+          http.helpPath ??
+          `/${[...prefix.split('/'), name, 'help'].filter(Boolean).join('/')}`
+        }`,
       );
       return app;
     } catch (error) {
       // A half-started application holds modules, timers and possibly a socket; release them, and
       // report the failure that got us here rather than one from the cleanup.
-      await app.close().catch(() => undefined);
+      await quietly('closing the application', () => app.close());
       throw error;
     }
   };

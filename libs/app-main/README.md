@@ -19,7 +19,7 @@ const app = defineApp({
   name: 'schedule',
   createTool: createScheduleTool, // (options?) => Promise<{ runtime, close }>
   http: {
-    createApp: createScheduleHttp, // (options?) => Promise<INestApplication>, not yet listening
+    createApp: createScheduleHttp, // (options, { port }) => Promise<INestApplication>, not yet listening
     portEnv: 'SCHEDULE_PORT',
     defaultPort: 3401,
   },
@@ -50,7 +50,7 @@ if (require.main === module) {
 | empty                         | HTTP API (the help text if none)  |
 | anything else                 | one-shot CLI (`--cli` is ignored) |
 
-An unrecognised leading flag is refused rather than falling through — `--repel` and `-x` alike — because otherwise a typo would reach the "no arguments" case and start a web server, or be run as an operation called `-x`. An operation name never starts with `-`, so nothing legitimate is refused. The standard flags `--cli`, `--help` and `-h` are accepted and run as a one-shot request.
+Only the first argument is checked: an unrecognised flag later in `argv` is passed on to the operation parser, which reports it. An unrecognised leading flag is refused rather than falling through — `--repel` and `-x` alike — because otherwise a typo would reach the "no arguments" case and start a web server, or be run as an operation called `-x`. An operation name never starts with `-`, so nothing legitimate is refused. The standard flags `--cli`, `--help` and `-h` are accepted and run as a one-shot request.
 
 `main` sets `process.exitCode` and never calls `process.exit`, so a running server keeps the process alive and open handles drain.
 
@@ -74,3 +74,5 @@ defineApp({
 ```
 
 An extra mode receives the options and the full `argv`, so it can parse flags of its own. It is named in the unknown-mode message and handled like the REPL and the sidecar: an operator error prints its message and exits 1, anything else is rethrown. A mode that needs another exit code sets `process.exitCode` itself. A flag that repeats a standard flag, or another extra mode's, makes `defineApp` throw when the app is defined.
+
+When `configure` or `listen` fails, `defineApp` closes the application. Nest's `close()` runs every provider's `onModuleDestroy` (and the shutdown hooks), including for providers whose `onModuleInit` never ran, and then disposes the HTTP adapter. That is Nest's own behaviour, and the alternative is leaking the application. If one of those `onModuleDestroy` hooks throws — typically because it touches state its `onModuleInit` would have set — `close()` rejects before disposing, and the application leaks. That can follow a `configure` failure as well as a `listen` failure. `defineApp` then writes a warning to stderr (`<name>: warning: closing the application failed …`) and still reports the original error. The warning goes to stderr, not Nest's `Logger`, so it is not silenced by `logger: false`.
