@@ -1,4 +1,4 @@
-import { lstat, mkdir, rename, rmdir } from 'node:fs/promises';
+import { lstat, mkdir, readdir, rename, rmdir } from 'node:fs/promises';
 import { dirname, isAbsolute, resolve, sep } from 'node:path';
 
 import { WorkspaceError } from './marker';
@@ -85,6 +85,23 @@ async function removeEmpty(created: readonly string[]): Promise<string[]> {
 }
 
 /**
+ * Why a rename onto an existing directory failed on Windows, which reports `EPERM` whether the
+ * directory is empty or not (and also when something holds the source open).
+ */
+async function windowsDirectoryRefusal(
+  to: string,
+): Promise<string | undefined> {
+  try {
+    return (await readdir(to)).length > 0
+      ? `${to} already holds files (merging two stores yields one that opens and is wrong)`
+      : `${to} is an existing directory, which Windows does not replace even when empty ` +
+          '(remove it and retry)';
+  } catch {
+    return undefined; // it is gone or unreadable; report the rename's own error
+  }
+}
+
+/**
  * Move one app's on-disk state directory to another place, for example from an old location into
  * {@link ProjectMarker.appStatePathOf}.
  *
@@ -94,6 +111,10 @@ async function removeEmpty(created: readonly string[]): Promise<string[]> {
  * state. The operating system also does the hard checks: it refuses a destination inside the
  * source or a non-empty destination, and it compares the directories themselves rather than their
  * spelling, so case-insensitive filesystems and links cannot defeat it.
+ *
+ * 🔴 **A file or link at `to` is refused before the rename, not left to it.** On Windows, renaming
+ * a directory onto a file replaces the file. A file that another process creates at `to` between
+ * that check and the rename can still be replaced there.
  *
  * 🔴 **Both paths must be absolute.** A relative path (including `.`, `..` and the empty string)
  * would be read against the current directory, so a caller's bug would move and delete its own
@@ -110,7 +131,7 @@ async function removeEmpty(created: readonly string[]): Promise<string[]> {
  * - a source that does not exist, is not a directory, or is itself a symbolic link;
  * - the same directory given twice (even under different spellings or through a link);
  * - a destination that is the source or inside it;
- * - a destination that is not absent or an empty directory;
+ * - a destination that is not absent or an empty directory (Windows refuses an empty one too);
  * - a destination on another filesystem.
  *
  * @param from - The directory to move.
@@ -153,6 +174,14 @@ export async function migrateAppState(
     );
   }
 
+  // 🔴 Do not leave this to `rename`: POSIX refuses it, but Windows replaces the file.
+  if (destination !== undefined && !destination.isDirectory()) {
+    throw new WorkspaceError(
+      `Refusing to migrate ${from} into ${to}: ${to} exists and is not a directory (a file or a ` +
+        'symbolic link is never replaced). Nothing was changed.',
+    );
+  }
+
   // Before any `mkdir`: creating the destination's parents inside the source would touch it.
   // `resolve` is safe here: `..` is already refused, so it only folds `//`, `/./` and trailing slashes.
   const lexicalFrom = resolve(from);
@@ -186,7 +215,13 @@ export async function migrateAppState(
           ? `${toCreate[0]}, which this call created, was removed`
           : `${left.join(', ')} could not be removed (another process may be using ` +
             'them, or they are not empty); remove them before retrying if they are not wanted';
-    const why =
+    const windowsWhy =
+      process.platform === 'win32' &&
+      destination !== undefined &&
+      (codeOf(error) === 'EPERM' || codeOf(error) === 'EACCES')
+        ? await windowsDirectoryRefusal(to)
+        : undefined;
+    const codeWhy =
       codeOf(error) === 'EXDEV'
         ? `${from} and ${to} are on different filesystems, which a rename cannot cross`
         : codeOf(error) === 'ENOTEMPTY' || codeOf(error) === 'EEXIST'
@@ -196,6 +231,7 @@ export async function migrateAppState(
             : codeOf(error) === 'ENOTDIR' || codeOf(error) === 'EISDIR'
               ? `${to} exists and is not a directory (a file or a symbolic link is never replaced)`
               : `the move failed (${codeOf(error)}): ${messageOf(error)}`;
+    const why = windowsWhy ?? codeWhy;
     throw new WorkspaceError(
       `Refusing to migrate ${from} into ${to}: ${why}. The source's contents were not changed; ${undone}.`,
     );

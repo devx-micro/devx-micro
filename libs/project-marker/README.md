@@ -127,7 +127,9 @@ It refuses, leaving the source's contents and the destination as they were, when
   is a file or a link (neither is ever replaced);
 - `to` is on another filesystem.
 
-An existing **empty** directory at `to` is replaced on POSIX (Windows refuses it). Missing parents of
+An existing **empty** directory at `to` is replaced on POSIX; Windows refuses it, so remove it
+first. On Windows a file that another process creates at `to` while the call is running can be
+replaced, because `rename` there overwrites files. Missing parents of
 `to` are created, and if the move then fails, only the ones this call created, and only while still
 empty, are removed (`rmdir`, never a recursive delete, so another process's data is never touched). If two moves race to create the same new parent and one fails, the other can fail
 with `ENOENT` once; its source is intact and retrying succeeds. Every refusal throws
