@@ -6,7 +6,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -118,7 +118,7 @@ describe('writing the marker', () => {
 
   it('defaults the project name to the directory name', async () => {
     const { workspace } = await writeMarker(root);
-    expect(workspace.marker.project).toBe(root.split('/').pop());
+    expect(workspace.marker.project).toBe(basename(root));
   });
 
   /**

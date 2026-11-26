@@ -20,6 +20,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { WorkspaceError } from './marker';
 import { migrateAppState } from './migrate';
 
+const windows = process.platform === 'win32';
+
 let base: string;
 let cwd: string;
 beforeEach(() => {
@@ -61,6 +63,8 @@ describe('migrating app state', () => {
     const from = join(base, 'old');
     const to = join(base, 'new');
     seedStore(from);
+    // Compared rather than asserted as 0o600: Windows does not keep POSIX permission bits.
+    const mode = statSync(join(from, 'nested', 'deep.ldb')).mode;
 
     expect(await migrateAppState(from, to)).toEqual({ from, to });
 
@@ -70,7 +74,7 @@ describe('migrating app state', () => {
     expect(readFileSync(join(to, 'nested', 'deep.ldb'), 'utf8')).toBe(
       'nested payload',
     );
-    expect(statSync(join(to, 'nested', 'deep.ldb')).mode & 0o777).toBe(0o600);
+    expect(statSync(join(to, 'nested', 'deep.ldb')).mode).toBe(mode);
   });
 
   it('moves a directory that holds links as they are, without reading through them', async () => {
@@ -95,7 +99,7 @@ describe('migrating app state', () => {
     expect(readFileSync(join(to, 'CURRENT'), 'utf8')).toBe('MANIFEST-000001\n');
   });
 
-  it('moves into an existing empty directory', async () => {
+  it.skipIf(windows)('moves into an existing empty directory', async () => {
     const from = join(base, 'old');
     const to = join(base, 'new');
     seedStore(from);
@@ -106,6 +110,23 @@ describe('migrating app state', () => {
     expect(existsSync(join(to, 'CURRENT'))).toBe(true);
     expect(existsSync(from)).toBe(false);
   });
+
+  it.runIf(windows)(
+    'refuses an existing empty directory on Windows, saying why',
+    async () => {
+      const from = join(base, 'old');
+      const to = join(base, 'new');
+      seedStore(from);
+      mkdirSync(to);
+
+      expect(await refusal(from, to)).toMatch(
+        /does not replace even when empty/,
+      );
+
+      expect(existsSync(join(from, 'CURRENT'))).toBe(true);
+      expect(existsSync(to)).toBe(true);
+    },
+  );
 
   it('accepts a trailing slash on either path', async () => {
     const from = join(base, 'old');
@@ -141,7 +162,10 @@ describe('what is refused, with nothing changed', () => {
     ['the current directory', '.'],
     ['the parent directory', '..'],
     ['a relative path', 'old'],
-    ['a Windows-style path on POSIX', String.raw`C:\foo\bar`],
+    // Absolute on Windows, so there is nothing to refuse there.
+    ...(windows
+      ? []
+      : [['a Windows-style path on POSIX', String.raw`C:\foo\bar`]]),
   ])('a %s as the source or the destination', async (_name, bad) => {
     // Real files in the throwaway cwd, so a wrongly accepted path would visibly lose them.
     writeFileSync(join(base, 'cwd', 'precious'), 'keep');
@@ -300,7 +324,27 @@ describe('cleanup after a failed move', () => {
   // destination's parents were created. Root ignores directory permissions, so skip there.
   const asRoot = process.getuid?.() === 0;
 
-  it.skipIf(asRoot)(
+  // Windows also ignores them. It does refuse to move the current directory, used below.
+  const noReadOnlyDirectories = asRoot || windows;
+
+  it.runIf(windows)(
+    'removes exactly the parents it created on Windows, and says so',
+    async () => {
+      const from = join(base, 'old');
+      seedStore(from);
+      mkdirSync(join(base, 'kept'));
+      process.chdir(from);
+
+      const message = await refusal(from, join(base, 'kept', 'x', 'y', 'new'));
+
+      expect(message).toMatch(/was removed/);
+      expect(existsSync(join(from, 'CURRENT'))).toBe(true);
+      expect(existsSync(join(base, 'kept'))).toBe(true);
+      expect(existsSync(join(base, 'kept', 'x'))).toBe(false);
+    },
+  );
+
+  it.skipIf(noReadOnlyDirectories)(
     'never removes what a concurrent migration put into the parents it created',
     async () => {
       const locked = join(base, 'ro');
@@ -337,7 +381,7 @@ describe('cleanup after a failed move', () => {
     },
   );
 
-  it.skipIf(asRoot)(
+  it.skipIf(noReadOnlyDirectories)(
     'removes exactly the parents it created, and says so',
     async () => {
       const locked = join(base, 'ro');
