@@ -1,6 +1,9 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    // No maps: sources are not published, and on Windows the build wrote this machine's absolute
+    // paths into them.
+    "sourceMap": false,
     "outDir": "../../dist/out-tsc",
     "declaration": true,
     "types": ["node"]
